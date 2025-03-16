@@ -1,95 +1,1281 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import styles from "./page.module.css";
+import { getText, Language } from "@/i18n";
+import { cn } from "@/lib/utils";
 
-export default function Home() {
-  return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>src/app/page.tsx</code>.
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+// shadcn/ui 컴포넌트 import
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
+import { Settings } from '@/components/Settings';
+import { AudioPlayer } from '@/components/AudioPlayer';
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Pause, Settings as SettingsIcon, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarTrigger,
+} from "@/components/ui/menubar";
 
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+interface LyricLine {
+  start: number;
+  end?: number;
+  text: string;
+}
+
+interface HistoryState {
+  lyrics: LyricLine[];
+  audioFile: File | null;
+  timestamp: number;
+}
+
+export default function LiveLyricsPage() {
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+
+  // 모바일 기기 감지
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isNarrowScreen = window.innerWidth < 768;
+      setIsMobile(isMobileDevice || isNarrowScreen);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 모바일 접근 제한 페이지
+  if (isMobile) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center bg-background">
+        <div className="max-w-md space-y-4">
+          <h1 className="text-2xl font-bold">데스크톱에서만 사용 가능합니다</h1>
+          <p className="text-muted-foreground">
+            죄송합니다. 이 앱은 데스크톱 환경에 최적화되어 있어 모바일 기기에서는 사용할 수 없습니다.
+            더 나은 경험을 위해 데스크톱이나 노트북으로 접속해주세요.
+          </p>
+          <div className="text-sm text-muted-foreground mt-8">
+            권장 최소 화면 크기: 768px
+          </div>
         </div>
-      </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      </div>
+    );
+  }
+
+  const [lyrics, setLyrics] = useState<LyricLine[]>([]);
+  const [history, setHistory] = useState<HistoryState[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioURL, setAudioURL] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [previewMode, setPreviewMode] = useState<"apple" | "subtitle">("apple");
+  const [duration, setDuration] = useState<number>(0);
+
+  const [alignment, setAlignment] = useState<
+    "textAlignLeft" | "textAlignCenter" | "textAlignRight"
+  >("textAlignCenter");
+
+  const [leftPanelWidth, setLeftPanelWidth] = useState<number>(300);
+
+  const [newLyricStartTime, setNewLyricStartTime] = useState<number>(0);
+  const [newLyricEndTime, setNewLyricEndTime] = useState<number>(0);
+  const [newLyricText, setNewLyricText] = useState<string>("");
+  const [isAddLyricDialogOpen, setIsAddLyricDialogOpen] = useState<boolean>(false);
+
+  const [language, setLanguage] = useState<Language>('ko');
+  const t = getText(language);
+
+  const isVideoFile = audioFile?.type.startsWith('video/');
+
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // 수정할 가사 상태 추가
+  const [editingLyric, setEditingLyric] = useState<{ index: number; line: LyricLine } | null>(null);
+  const [isEditLyricDialogOpen, setIsEditLyricDialogOpen] = useState<boolean>(false);
+
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showSettings, setShowSettings] = useState<boolean>(true);
+
+  // requestAnimationFrame 참조 저장
+  const rafRef = useRef<number | undefined>(undefined);
+  const lastFrameTimeRef = useRef<number>(0);
+  const targetFPSInterval = 1000 / 30; // 30fps로 제한
+
+  // 활성 가사 인덱스 계산
+  const activeLyricIndex = lyrics.findIndex((line, index) => {
+    if (index === lyrics.length - 1) {
+      return currentTime >= line.start;
+    } else {
+      return currentTime >= line.start && currentTime < lyrics[index + 1].start;
+    }
+  });
+
+  // 비디오 동기화 최적화
+  const syncVideo = useCallback((time: number) => {
+    if (!isVideoFile || !videoRef.current) return;
+    
+    if (Math.abs(videoRef.current.currentTime - time) > 0.5) {
+      videoRef.current.currentTime = time;
+    }
+  }, [isVideoFile]);
+
+  // 시간 업데이트 핸들러 최적화
+  const handleTimeUpdate = useCallback((time: number) => {
+    setCurrentTime(time);
+    
+    if (isVideoFile && videoRef.current) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      syncVideo(time);
+    }
+
+    // 현재 시간이 다음 가사의 시작 시간을 넘어갔는지 확인
+    const currentIndex = lyrics.findIndex((line, index) => {
+      if (index === lyrics.length - 1) {
+        return time >= line.start;
+      } else {
+        return time >= line.start && time < lyrics[index + 1].start;
+      }
+    });
+
+    if (currentIndex !== activeLyricIndex) {
+      // 가사 미리보기 영역 스크롤 업데이트
+      if (previewMode === "apple" && previewRef.current) {
+        const container = previewRef.current;
+        const activeElement = container.querySelector(`.${styles.active}`);
+        if (activeElement) {
+          const containerRect = container.getBoundingClientRect();
+          const activeRect = activeElement.getBoundingClientRect();
+          const offset =
+            activeRect.top -
+            containerRect.top -
+            container.clientHeight / 2 +
+            activeRect.height / 2;
+          container.scrollTo({ top: container.scrollTop + offset, behavior: "smooth" });
+        }
+      }
+    }
+  }, [isVideoFile, lyrics, previewMode, syncVideo]);
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+      }
+      if (audioURL) {
+        URL.revokeObjectURL(audioURL);
+      }
+    };
+  }, [audioURL]);
+
+  // 오디오/비디오 상태 변경 감지
+  useEffect(() => {
+    const currentAudioRef = audioRef.current;
+    const currentVideoRef = videoRef.current;
+
+    if (!currentAudioRef) return;
+
+    const handlePlay = async () => {
+      setIsPlaying(true);
+      if (currentVideoRef && currentVideoRef.paused) {
+        try {
+          await currentVideoRef.play();
+        } catch (error) {
+          console.error('Video play error:', error);
+        }
+      }
+    };
+
+    const handlePause = () => {
+      setIsPlaying(false);
+      if (currentVideoRef && !currentVideoRef.paused) {
+        currentVideoRef.pause();
+      }
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      if (currentVideoRef) {
+        currentVideoRef.pause();
+      }
+    };
+
+    const handleVideoPlay = async () => {
+      setIsPlaying(true);
+      if (currentAudioRef.paused) {
+        try {
+          await currentAudioRef.play();
+        } catch (error) {
+          console.error('Audio play error:', error);
+        }
+      }
+    };
+
+    const handleVideoPause = () => {
+      setIsPlaying(false);
+      if (!currentAudioRef.paused) {
+        currentAudioRef.pause();
+      }
+    };
+
+    // 초기 상태 동기화
+    setIsPlaying(!currentAudioRef.paused);
+
+    currentAudioRef.addEventListener('play', handlePlay);
+    currentAudioRef.addEventListener('pause', handlePause);
+    currentAudioRef.addEventListener('ended', handleEnded);
+
+    if (currentVideoRef) {
+      currentVideoRef.addEventListener('play', handleVideoPlay);
+      currentVideoRef.addEventListener('pause', handleVideoPause);
+    }
+
+    return () => {
+      currentAudioRef.removeEventListener('play', handlePlay);
+      currentAudioRef.removeEventListener('pause', handlePause);
+      currentAudioRef.removeEventListener('ended', handleEnded);
+
+      if (currentVideoRef) {
+        currentVideoRef.removeEventListener('play', handleVideoPlay);
+        currentVideoRef.removeEventListener('pause', handleVideoPause);
+      }
+    };
+  }, []);
+
+  // 비디오 요소 최적화
+  const videoElement = useMemo(() => {
+    if (!audioURL) return null;
+    
+    return (
+      <video
+        src={audioURL}
+        className="w-full h-full object-contain"
+        ref={videoRef}
+        onTimeUpdate={(e) => handleTimeUpdate(e.currentTarget.currentTime)}
+        onDurationChange={(e) => setDuration(e.currentTarget.duration)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+        playsInline
+        controls
+        style={{ 
+          maxHeight: "720px",
+          transform: "translateZ(0)",
+          backfaceVisibility: "hidden",
+          perspective: "1000px"
+        }}
+      >
+        <source
+          src={audioURL}
+          type={audioFile?.type}
+        />
+      </video>
+    );
+  }, [audioURL, handleTimeUpdate, audioFile?.type]);
+
+  // 가사 클릭 핸들러
+  const handleLyricClick = (startTime: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = startTime;
+      setCurrentTime(startTime);
+    }
+  };
+
+  // 시간을 hh:mm:ss.ms 형식으로 변환
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 1000);
+
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  };
+
+  // 시간 문자열을 초 단위로 변환
+  const timeToSeconds = (timeStr: string): number => {
+    const [time, ms] = timeStr.split('.');
+    const [hours, minutes, seconds] = time.split(':').map(Number);
+    return hours * 3600 + minutes * 60 + seconds + (Number(ms) || 0) / 1000;
+  };
+
+  // SRT 시간 문자열 -> 초 단위 숫자로 변환
+  const srtTimeToSeconds = (timeStr: string): number => {
+    const parts = timeStr.split(/[:,]/);
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    const seconds = parseInt(parts[2], 10);
+    const milliseconds = parseInt(parts[3], 10);
+    return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+  };
+
+  // SRT 파일 내용을 파싱
+  const parseSRT = (srt: string): LyricLine[] => {
+    const regex =
+      /(\d+)\s+(\d{2}:\d{2}:\d{2},\d{3})\s+-->\s+(\d{2}:\d{2}:\d{2},\d{3})\s+([\s\S]*?)(?=\n\n|\n*$)/g;
+    const lines: LyricLine[] = [];
+    let match;
+    while ((match = regex.exec(srt)) !== null) {
+      const start = srtTimeToSeconds(match[2]);
+      const end = srtTimeToSeconds(match[3]);
+      const text = match[4].trim();
+      lines.push({ start, end, text });
+    }
+    return lines;
+  };
+
+  // 히스토리에 현재 상태 추가
+  const addToHistory = (newLyrics: LyricLine[], newAudioFile: File | null = audioFile) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push({
+      lyrics: newLyrics,
+      audioFile: newAudioFile,
+      timestamp: Date.now()
+    });
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  // 실행 취소
+  const undo = () => {
+    if (historyIndex > 0) {
+      const prevState = history[historyIndex - 1];
+      setHistoryIndex(historyIndex - 1);
+      setLyrics(prevState.lyrics);
+      
+      // 오디오 파일 상태 복원
+      setAudioFile(prevState.audioFile);
+      if (prevState.audioFile) {
+        const url = URL.createObjectURL(prevState.audioFile);
+        setAudioURL(url);
+      } else {
+        setAudioURL(null);
+      }
+    }
+  };
+
+  // 다시 실행
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextState = history[historyIndex + 1];
+      setHistoryIndex(historyIndex + 1);
+      setLyrics(nextState.lyrics);
+      
+      // 오디오 파일 상태 복원
+      setAudioFile(nextState.audioFile);
+      if (nextState.audioFile) {
+        const url = URL.createObjectURL(nextState.audioFile);
+        setAudioURL(url);
+      } else {
+        setAudioURL(null);
+      }
+    }
+  };
+
+  // 키보드 단축키 이벤트 리스너
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) {
+        switch (e.key) {
+          case 'z':
+            e.preventDefault();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+            break;
+          case 'n':
+            e.preventDefault();
+            handleNew();
+            break;
+          case 'o':
+            e.preventDefault();
+            document.getElementById('srt-upload')?.click();
+            break;
+          case 's':
+            e.preventDefault();
+            if (lyrics.length > 0) {
+              exportToSRT();
+            }
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history, lyrics]);
+
+  // 초기 상태를 히스토리에 추가
+  useEffect(() => {
+    if (history.length === 0) {
+      addToHistory([], null);
+    }
+  }, []);
+
+  // 가사 추가 시 히스토리 추가
+  const handleAddLyric = () => {
+    if (newLyricText.trim()) {
+      const newLine: LyricLine = {
+        start: newLyricStartTime,
+        end: newLyricEndTime,
+        text: newLyricText.trim()
+      };
+      // 시간 순서대로 정렬
+      const newLyrics = [...lyrics, newLine].sort((a, b) => a.start - b.start);
+      setLyrics(newLyrics);
+      addToHistory(newLyrics, audioFile);
+      setNewLyricText("");
+      setNewLyricStartTime(0);
+      setNewLyricEndTime(5);
+      setIsAddLyricDialogOpen(false);
+    }
+  };
+
+  // 가사 삭제 시 히스토리 추가
+  const handleDeleteLyric = (index: number) => {
+    const newLyrics = lyrics.filter((_, i) => i !== index);
+    setLyrics(newLyrics);
+    addToHistory(newLyrics, audioFile);
+  };
+
+  // 가사 수정 시 히스토리 추가
+  const editLyricLine = () => {
+    if (!editingLyric) return;
+
+    const newLyrics = [...lyrics];
+    newLyrics[editingLyric.index] = {
+      start: editingLyric.line.start,
+      end: editingLyric.line.end,
+      text: editingLyric.line.text.trim()
+    };
+
+    // 시간 순서대로 정렬
+    const sortedLyrics = newLyrics.sort((a, b) => a.start - b.start);
+    setLyrics(sortedLyrics);
+    addToHistory(sortedLyrics, audioFile);
+    setEditingLyric(null);
+    setIsEditLyricDialogOpen(false);
+  };
+
+  // SRT 파일 업로드 시 히스토리 추가
+  const handleSrtUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const srtText = event.target?.result as string;
+        const parsedLyrics = parseSRT(srtText);
+        setLyrics(parsedLyrics);
+        addToHistory(parsedLyrics, audioFile);  // audioFile 유지
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  // 오디오/비디오 파일 업로드
+  const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setAudioFile(file);
+      setAudioURL(url);
+      
+      // 상태가 업데이트된 후에 히스토리에 추가
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push({
+        lyrics,
+        audioFile: file,
+        timestamp: Date.now()
+      });
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+    }
+  };
+
+  // 미리보기 영역에서 활성 가사가 보이도록 부드럽게 스크롤
+  const previewRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (previewMode === "apple" && previewRef.current) {
+      const container = previewRef.current;
+      const activeElement = container.querySelector(`.${styles.active}`);
+      if (activeElement) {
+        const containerRect = container.getBoundingClientRect();
+        const activeRect = activeElement.getBoundingClientRect();
+        const offset =
+          activeRect.top -
+          containerRect.top -
+          container.clientHeight / 2 +
+          activeRect.height / 2;
+        container.scrollTo({ top: container.scrollTop + offset, behavior: "smooth" });
+      }
+    }
+  }, [activeLyricIndex, previewMode]);
+
+  // 시간 입력 컴포넌트
+  const TimeInput = ({ value, onChange, label, disabled }: { value: number; onChange: (value: number) => void; label: string; disabled?: boolean }) => {
+    const [inputValue, setInputValue] = useState(formatTime(value));
+    const [isEditing, setIsEditing] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // 편집 중이 아닐 때만 외부 값 변경을 반영
+    useEffect(() => {
+      if (!isEditing) {
+        setInputValue(formatTime(value));
+      }
+    }, [value, isEditing]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setInputValue(newValue);
+    };
+
+    const handleBlur = () => {
+      setIsEditing(false);
+      if (/^\d{2}:\d{2}:\d{2}\.\d{3}$/.test(inputValue)) {
+        onChange(timeToSeconds(inputValue));
+      } else {
+        setInputValue(formatTime(value));
+      }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.currentTarget.blur();
+      } else if (e.key === 'Escape') {
+        setInputValue(formatTime(value));
+        setIsEditing(false);
+        e.currentTarget.blur();
+      }
+    };
+
+    // 숫자 키를 누를 때 자동으로 편집 모드로 전환
+    const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!isEditing && /[\d]/.test(e.key)) {
+        setIsEditing(true);
+        setInputValue(e.key);
+        e.preventDefault();
+      }
+    };
+
+    return (
+      <div className="space-y-2">
+        <Label>{label}</Label>
+        <div className="flex items-center gap-4">
+          <div className="relative w-[180px]">
+            <Input
+              ref={inputRef}
+              value={inputValue}
+              onChange={handleChange}
+              onFocus={() => setIsEditing(true)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              onKeyPress={handleKeyPress}
+              placeholder="00:00:00.000"
+              className="font-mono"
+              disabled={disabled}
+            />
+          </div>
+          <Slider
+            value={[value]}
+            onValueChange={([v]) => {
+              if (!isEditing && !disabled) {
+                onChange(v);
+              }
+            }}
+            max={duration || 300}
+            step={0.001}
+            className={cn("flex-1", disabled && "opacity-50 cursor-not-allowed")}
+            disabled={disabled}
           />
-          Learn
-        </a>
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
+        </div>
+      </div>
+    );
+  };
+
+  // 가사 추가 다이얼로그 내용
+  const handleAddLyricDialogOpen = () => {
+    // 재생 중인 경우 현재 시간을 시작 시간으로 설정
+    if (audioRef.current) {
+      setNewLyricStartTime(audioRef.current.currentTime);
+      setNewLyricEndTime(audioRef.current.currentTime + 5);
+    } else {
+      const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
+      if (lastLyric?.end) {
+        setNewLyricStartTime(lastLyric.end);
+        setNewLyricEndTime(lastLyric.end + 5);
+      } else {
+        setNewLyricStartTime(0);
+        setNewLyricEndTime(5);
+      }
+    }
+    setIsAddLyricDialogOpen(true);
+  };
+
+  // 드래그로 왼쪽 패널의 너비 조절
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      setLeftPanelWidth(Math.max(200, startWidth + delta));
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // 재생 중지
+  const handleStop = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+  };
+
+  // SRT 형식으로 가사 내보내기
+  const exportToSRT = () => {
+    const srtContent = lyrics
+      .sort((a, b) => a.start - b.start)
+      .map((line, index) => {
+        const startTime = new Date(line.start * 1000).toISOString().slice(11, 23).replace('.', ',');
+        const endTime = line.end 
+          ? new Date(line.end * 1000).toISOString().slice(11, 23).replace('.', ',')
+          : new Date((line.start + 5) * 1000).toISOString().slice(11, 23).replace('.', ',');
+        
+        return `${index + 1}\n${startTime} --> ${endTime}\n${line.text}\n`;
+      })
+      .join('\n');
+
+    const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'lyrics.srt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const [showNewConfirmDialog, setShowNewConfirmDialog] = useState<boolean>(false);
+
+  // 새로운 가사 목록 시작
+  const handleNew = () => {
+    if (lyrics.length > 0 || audioFile) {
+      setShowNewConfirmDialog(true);
+    }
+  };
+
+  const handleConfirmNew = () => {
+    setLyrics([]);
+    setAudioFile(null);
+    if (audioURL) {
+      URL.revokeObjectURL(audioURL);
+    }
+    setAudioURL(null);
+    // 히스토리 초기화
+    setHistory([{
+      lyrics: [],
+      audioFile: null,
+      timestamp: Date.now()
+    }]);
+    setHistoryIndex(0);
+    setShowNewConfirmDialog(false);
+
+    // 페이지 새로고침
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  // 비디오 표시 여부 확인을 위한 useEffect
+  useEffect(() => {
+    if (videoContainerRef.current) {
+      if (isVideoFile && audioURL) {
+        videoContainerRef.current.style.display = 'block';
+      } else {
+        videoContainerRef.current.style.display = 'none';
+      }
+    }
+  }, [isVideoFile, audioURL]);
+
+  // 정렬된 가사 목록 메모이제이션
+  const sortedLyrics = useMemo(() => {
+    return [...lyrics].sort((a, b) => a.start - b.start);
+  }, [lyrics]);
+
+  const [showAnimation, setShowAnimation] = useState<boolean>(true);
+
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
+  const [isUserScrolling, setIsUserScrolling] = useState<boolean>(false);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const userScrollTimeout = useRef<NodeJS.Timeout>();
+  const autoScrollInProgress = useRef<boolean>(false);
+
+  // 테이블 자동 스크롤 효과
+  useEffect(() => {
+    if (!autoScroll || !tableRef.current) return;
+
+    const container = tableRef.current;
+    const activeRow = container.querySelector(`tr:nth-child(${activeLyricIndex + 1})`);
+    
+    if (activeRow) {
+      autoScrollInProgress.current = true;
+      const containerRect = container.getBoundingClientRect();
+      const activeRect = activeRow.getBoundingClientRect();
+      const offset =
+        activeRect.top -
+        containerRect.top -
+        container.clientHeight / 2 +
+        activeRect.height / 2;
+      
+      container.scrollTo({ top: container.scrollTop + offset, behavior: "smooth" });
+
+      // 자동 스크롤이 완료되면 플래그를 해제
+      setTimeout(() => {
+        autoScrollInProgress.current = false;
+      }, 500); // 스크롤 애니메이션 시간과 동일하게 설정
+    }
+  }, [activeLyricIndex, autoScroll]);
+
+  // 사용자 스크롤 감지
+  const handleTableScroll = () => {
+    // 자동 스크롤 중이면 무시
+    if (autoScrollInProgress.current) return;
+
+    setAutoScroll(false);
+    setIsUserScrolling(true);
+    
+    // 스크롤 후 5초 뒤에 자동 스크롤 다시 활성화
+    if (userScrollTimeout.current) {
+      clearTimeout(userScrollTimeout.current);
+    }
+    userScrollTimeout.current = setTimeout(() => {
+      setAutoScroll(true);
+      setIsUserScrolling(false);
+    }, 5000);
+  };
+
+  return (
+    <main className={styles.liveLyricsPage}>
+      <Menubar className="fixed top-0 left-0 right-0 z-50">
+        <MenubarMenu>
+          <MenubarTrigger>{t.editor.menu.file}</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onClick={handleNew}>
+              {t.editor.menu.new}
+              <MenubarShortcut>⌘N</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
+            <MenubarItem onClick={() => document.getElementById('srt-upload')?.click()}>
+              {t.editor.menu.import_srt}
+              <MenubarShortcut>⌘O</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onClick={exportToSRT} disabled={lyrics.length === 0}>
+              {t.editor.menu.export_srt}
+              <MenubarShortcut>⌘S</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+          <MenubarTrigger>{t.editor.menu.edit}</MenubarTrigger>
+          <MenubarContent>
+            <MenubarItem onClick={undo} disabled={historyIndex <= 0}>
+              {t.editor.menu.undo}
+              <MenubarShortcut>⌘Z</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onClick={redo} disabled={historyIndex >= history.length - 1}>
+              {t.editor.menu.redo}
+              <MenubarShortcut>⇧⌘Z</MenubarShortcut>
+            </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+        <div className="flex-1" />
+        <Settings 
+          language={language} 
+          onLanguageChange={setLanguage}
+          alignment={alignment}
+          onAlignmentChange={setAlignment}
+          showAnimation={showAnimation}
+          onAnimationChange={setShowAnimation}
+        />
+      </Menubar>
+      <div className="h-14" /> {/* 메뉴바 공간 확보 */}
+      <div className={styles.mainContent}>
+        <div className={styles.leftPanel} style={{ width: leftPanelWidth, flexShrink: 0 }}>
+          <div className={styles.header}>
+            <h1>{t.editor.title}</h1>
+          </div>
+          <div 
+            ref={videoContainerRef} 
+            className={cn(
+              "rounded-lg overflow-hidden bg-card border flex-shrink-0",
+              styles.videoContainer
+            )}
+            style={{ 
+              display: isVideoFile && audioURL ? 'block' : 'none',
+              aspectRatio: '16/9',
+              width: '100%',
+              marginBottom: '1rem'
+            }}
+          >
+            {videoElement}
+          </div>
+          <Card className="flex flex-col min-h-0 overflow-hidden">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>{t.editor.title}</CardTitle>
+                  <CardDescription>{t.editor.description}</CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="h-8 w-8"
+                >
+                  {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
+              {/* 설정 영역 */}
+              <div className={cn("space-y-4 transition-all duration-200", 
+                showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
+              )}>
+                {/* SRT 업로드 */}
+                <div className="space-y-2 flex-shrink-0">
+                  <Label>{t.editor.upload.srt}</Label>
+                  <Input
+                    id="srt-upload"
+                    type="file"
+                    accept=".srt"
+                    onChange={handleSrtUpload}
+                    className="cursor-pointer"
+                  />
+                </div>
+
+                {/* 오디오 업로드 */}
+                <div className="space-y-2 flex-shrink-0">
+                  <Label>{t.editor.upload.audio}</Label>
+                  <Input
+                    type="file"
+                    accept="audio/*,video/mp4"
+                    onChange={handleAudioUpload}
+                    className="cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* 가사 관리 */}
+              <div className="flex flex-col space-y-2 flex-1 min-h-0">
+                <div className="flex items-center justify-between flex-shrink-0">
+                  <Label>{t.editor.lyrics.title}</Label>
+                  <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
+                    {t.editor.lyrics.add}
+                  </Button>
+                </div>
+                <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{t.editor.dialog.title}</DialogTitle>
+                      <DialogDescription>
+                        {t.editor.dialog.description}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      {isPlaying && !isVideoFile && (
+                        <div className="space-y-4">
+                          <Alert variant="destructive">
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              {t.editor.playback.time_edit_disabled}
+                            </AlertDescription>
+                          </Alert>
+                          <Button 
+                            variant="secondary" 
+                            onClick={handleStop}
+                            className="w-full"
+                          >
+                            <Pause className="mr-2 h-4 w-4" />
+                            {t.editor.playback.stop}
+                          </Button>
+                        </div>
+                      )}
+                      <Tabs defaultValue="current" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="current">{t.editor.dialog.current_time}</TabsTrigger>
+                          <TabsTrigger value="last">{t.editor.dialog.last_lyric_time}</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="current" className="space-y-4">
+                          <TimeInput
+                            value={audioRef.current?.currentTime || 0}
+                            onChange={(value) => setNewLyricStartTime(value)}
+                            label={t.editor.dialog.start_time}
+                            disabled={isPlaying}
+                          />
+                          <TimeInput
+                            value={audioRef.current?.currentTime ? audioRef.current.currentTime + 5 : 5}
+                            onChange={(value) => setNewLyricEndTime(value)}
+                            label={t.editor.dialog.end_time}
+                            disabled={isPlaying}
+                          />
+                        </TabsContent>
+                        <TabsContent value="last" className="space-y-4">
+                          <TimeInput
+                            value={(() => {
+                              const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
+                              return lastLyric?.end || 0;
+                            })()}
+                            onChange={(value) => setNewLyricStartTime(value)}
+                            label={t.editor.dialog.start_time}
+                            disabled={isPlaying}
+                          />
+                          <TimeInput
+                            value={(() => {
+                              const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
+                              return (lastLyric?.end || 0) + 5;
+                            })()}
+                            onChange={(value) => setNewLyricEndTime(value)}
+                            label={t.editor.dialog.end_time}
+                            disabled={isPlaying}
+                          />
+                        </TabsContent>
+                      </Tabs>
+                      <div className="space-y-2">
+                        <Label>{t.editor.dialog.lyrics}</Label>
+                        <Input
+                          value={newLyricText}
+                          onChange={(e) => setNewLyricText(e.target.value)}
+                          placeholder={t.editor.dialog.lyrics_placeholder}
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsAddLyricDialogOpen(false)}>
+                        {t.editor.dialog.cancel}
+                      </Button>
+                      <Button onClick={handleAddLyric}>{t.editor.dialog.add}</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+                <div 
+                  ref={tableRef}
+                  className={cn("border rounded-lg overflow-auto flex-1 table-container")}
+                  onScroll={handleTableScroll}
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[180px] text-left sticky top-0 bg-background">{t.editor.lyrics.time}</TableHead>
+                        <TableHead className="sticky top-0 bg-background">{t.editor.lyrics.text}</TableHead>
+                        <TableHead className="w-[100px] text-right sticky top-0 bg-background"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {sortedLyrics.map((line, index) => (
+                        <TableRow 
+                          key={index}
+                          className={cn(
+                            "group transition-colors hover:bg-accent/50",
+                            index === activeLyricIndex && "bg-accent/30"
+                          )}
+                        >
+                          <TableCell 
+                            className="font-mono text-sm cursor-pointer"
+                            onClick={() => handleLyricClick(line.start)}
+                          >
+                            {formatTime(line.start)}
+                            <span className="text-muted-foreground"> ~ </span>
+                            {line.end ? formatTime(line.end) : t.editor.lyrics.until_end}
+                          </TableCell>
+                          <TableCell 
+                            className={cn(
+                              "cursor-pointer max-w-[400px] truncate",
+                              index === activeLyricIndex && "font-medium"
+                            )}
+                            onClick={() => handleLyricClick(line.start)}
+                          >
+                            {line.text}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  setEditingLyric({ index, line });
+                                  setIsEditLyricDialogOpen(true);
+                                }}
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <span className="sr-only">Edit</span>
+                                ✎
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteLyric(index)}
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              >
+                                <span className="sr-only">Delete</span>
+                                ×
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {lyrics.length === 0 && (
+                        <TableRow>
+                          <TableCell 
+                            colSpan={3} 
+                            className="h-32 text-center text-muted-foreground"
+                          >
+                            {t.editor.lyrics.empty}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                {isUserScrolling && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAutoScroll(true);
+                      setIsUserScrolling(false);
+                    }}
+                    className="w-full mt-2"
+                  >
+                    자동 스크롤 다시 시작
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Divider for resizing */}
+        <div className={styles.divider} onMouseDown={handleMouseDown}></div>
+
+        {/* 오른쪽: 가사 미리보기 영역 */}
+        <div className={styles.rightPanel}>
+          <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
+            <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
+            <Select
+              value={previewMode}
+              onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={t.preview.mode.label} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
+                <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <h2>{t.preview.title}</h2>
+          {previewMode === "apple" ? (
+            <div ref={previewRef} className={styles.lyricsPreview}>
+              <div className={styles[alignment]}>
+                {sortedLyrics.map((line, index) => {
+                  const isActive = index === activeLyricIndex;
+                  return (
+                    <div
+                      key={index}
+                      className={cn(
+                        styles.lyricLine,
+                        isActive ? styles.active : styles.inactive,
+                        !showAnimation && styles.noAnimation
+                      )}
+                      onClick={() => handleLyricClick(line.start)}
+                    >
+                      {line.text}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.subtitlePreview}>
+              {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 오디오 플레이어 (항상 표시) */}
+      {audioURL && (
+        <div className={styles.audioPlayerContainer}>
+          <AudioPlayer
+            src={audioURL}
+            onTimeUpdate={handleTimeUpdate}
+            onDurationChange={setDuration}
+            currentTime={currentTime}
+            onSeek={handleTimeUpdate}
+            audioRef={audioRef as React.RefObject<HTMLAudioElement>}
+            onPlayingChange={setIsPlaying}
+            isVideoFile={isVideoFile}
           />
-          Examples
-        </a>
-        <a
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        </div>
+      )}
+
+      {/* 가사 수정 다이얼로그 */}
+      <Dialog open={isEditLyricDialogOpen} onOpenChange={setIsEditLyricDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.editor.dialog.edit_title}</DialogTitle>
+            <DialogDescription>
+              {t.editor.dialog.edit_description}
+            </DialogDescription>
+          </DialogHeader>
+          {editingLyric && (
+            <div className="space-y-4 py-4">
+              {isPlaying && !isVideoFile && (
+                <div className="space-y-4">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {t.editor.playback.time_edit_disabled}
+                    </AlertDescription>
+                  </Alert>
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleStop}
+                    className="w-full"
+                  >
+                    <Pause className="mr-2 h-4 w-4" />
+                    {t.editor.playback.stop}
+                  </Button>
+                </div>
+              )}
+              <TimeInput
+                value={editingLyric.line.start}
+                onChange={(value) => 
+                  setEditingLyric(prev => prev ? {
+                    ...prev,
+                    line: { ...prev.line, start: value }
+                  } : null)
+                }
+                label={t.editor.dialog.start_time}
+                disabled={isPlaying}
+              />
+              <TimeInput
+                value={editingLyric.line.end || duration || 300}
+                onChange={(value) =>
+                  setEditingLyric(prev => prev ? {
+                    ...prev,
+                    line: { ...prev.line, end: value }
+                  } : null)
+                }
+                label={t.editor.dialog.end_time}
+                disabled={isPlaying}
+              />
+              <div className="space-y-2">
+                <Label>{t.editor.dialog.lyrics}</Label>
+                <Input
+                  value={editingLyric.line.text}
+                  onChange={(e) =>
+                    setEditingLyric(prev => prev ? {
+                      ...prev,
+                      line: { ...prev.line, text: e.target.value }
+                    } : null)
+                  }
+                  placeholder={t.editor.dialog.lyrics_placeholder}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditLyricDialogOpen(false)}>
+              {t.editor.dialog.cancel}
+            </Button>
+            <Button onClick={editLyricLine}>{t.editor.dialog.save}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 새로 만들기 확인 다이얼로그 */}
+      <Dialog open={showNewConfirmDialog} onOpenChange={setShowNewConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.editor.menu.new}</DialogTitle>
+            <DialogDescription>
+              {t.editor.menu.new_confirm}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewConfirmDialog(false)}>
+              {t.editor.dialog.cancel}
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmNew}>
+              확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </main>
   );
 }
