@@ -861,7 +861,7 @@ export default function LiveLyricsPage() {
       </Menubar>
       <div className="h-14" /> {/* 메뉴바 공간 확보 */}
       <div className={styles.mainContent}>
-        <div className={styles.leftPanel} style={{ width: leftPanelWidth, flexShrink: 0 }}>
+      <div className={styles.leftPanel} style={{ width: leftPanelWidth, flexShrink: 0 }}>
           <div className={styles.header}>
             <h1>{t.editor.title}</h1>
           </div>
@@ -895,14 +895,14 @@ export default function LiveLyricsPage() {
                 >
                   {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </Button>
-              </div>
+        </div>
             </CardHeader>
             <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
               {/* 설정 영역 */}
               <div className={cn("space-y-4 transition-all duration-200", 
                 showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
               )}>
-                {/* SRT 업로드 */}
+        {/* SRT 업로드 */}
                 <div className="space-y-2 flex-shrink-0">
                   <Label>{t.editor.upload.srt}</Label>
                   <Input
@@ -912,7 +912,7 @@ export default function LiveLyricsPage() {
                     onChange={handleSrtUpload}
                     className="cursor-pointer"
                   />
-                </div>
+        </div>
 
                 {/* 오디오 업로드 */}
                 <div className="space-y-2 flex-shrink-0">
@@ -924,7 +924,7 @@ export default function LiveLyricsPage() {
                     className="cursor-pointer"
                   />
                 </div>
-              </div>
+        </div>
 
               {/* 가사 관리 */}
               <div className="flex flex-col space-y-2 flex-1 min-h-0">
@@ -933,7 +933,7 @@ export default function LiveLyricsPage() {
                   <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
                     {t.editor.lyrics.add}
                   </Button>
-                </div>
+        </div>
                 <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
                   <DialogContent>
                     <DialogHeader>
@@ -958,9 +958,9 @@ export default function LiveLyricsPage() {
                           >
                             <Pause className="mr-2 h-4 w-4" />
                             {t.editor.playback.stop}
-                          </Button>
-                        </div>
-                      )}
+            </Button>
+          </div>
+        )}
                       <Tabs defaultValue="current" className="w-full">
                         <TabsList className="grid w-full grid-cols-2">
                           <TabsTrigger value="current">{t.editor.dialog.current_time}</TabsTrigger>
@@ -1113,58 +1113,58 @@ export default function LiveLyricsPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
+      </div>
 
-        {/* Divider for resizing */}
-        <div className={styles.divider} onMouseDown={handleMouseDown}></div>
+      {/* Divider for resizing */}
+      <div className={styles.divider} onMouseDown={handleMouseDown}></div>
 
-        {/* 오른쪽: 가사 미리보기 영역 */}
-        <div className={styles.rightPanel}>
-          <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
+      {/* 오른쪽: 가사 미리보기 영역 */}
+      <div className={styles.rightPanel}>
+        <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
             <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
-            <Select
-              value={previewMode}
-              onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
-            >
-              <SelectTrigger className="w-[180px]">
+          <Select
+            value={previewMode}
+            onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
+          >
+            <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder={t.preview.mode.label} />
-              </SelectTrigger>
-              <SelectContent>
+            </SelectTrigger>
+            <SelectContent>
                 <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
                 <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            </SelectContent>
+          </Select>
+        </div>
 
           <h2>{t.preview.title}</h2>
-          {previewMode === "apple" ? (
-            <div ref={previewRef} className={styles.lyricsPreview}>
-              <div className={styles[alignment]}>
+        {previewMode === "apple" ? (
+          <div ref={previewRef} className={styles.lyricsPreview}>
+            <div className={styles[alignment]}>
                 {sortedLyrics.map((line, index) => {
-                  const isActive = index === activeLyricIndex;
-                  return (
-                    <div
-                      key={index}
+                const isActive = index === activeLyricIndex;
+                return (
+                  <div
+                    key={index}
                       className={cn(
                         styles.lyricLine,
                         isActive ? styles.active : styles.inactive,
                         !showAnimation && styles.noAnimation
                       )}
                       onClick={() => handleLyricClick(line.start)}
-                    >
-                      {line.text}
-                    </div>
-                  );
-                })}
-              </div>
+                  >
+                    {line.text}
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <div className={styles.subtitlePreview}>
-              {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className={styles.subtitlePreview}>
+            {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
+          </div>
+        )}
       </div>
+    </div>
 
       {/* 오디오 플레이어 (항상 표시) */}
       {audioURL && (
