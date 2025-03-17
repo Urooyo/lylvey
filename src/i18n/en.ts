@@ -27,13 +27,18 @@ export const en = {
     },
     dialog: {
       title: "Add New Lyrics",
+      edit_title: "Edit Lyrics",
       description: "Enter start time, end time, and lyrics",
+      edit_description: "Edit the time and content of the lyrics",
       start_time: "Start Time",
       end_time: "End Time",
       lyrics: "Lyrics",
       lyrics_placeholder: "Enter lyrics",
       cancel: "Cancel",
-      add: "Add"
+      add: "Add",
+      save: "Save",
+      current_time: "Current Playback Time",
+      last_lyric_time: "Last Lyrics Time"
     },
     history: {
       undo: "Undo (Ctrl/⌘ + Z)",
@@ -72,4 +77,4 @@ export const en = {
       system: "System"
     }
   }
-}; 
+} as const; 
