@@ -44,7 +44,17 @@ import { Slider } from "@/components/ui/slider";
 import { Settings } from '@/components/Settings';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Pause, Settings as SettingsIcon, ChevronUp, ChevronDown } from "lucide-react";
+import { 
+  AlertCircle, 
+  Pause, 
+  Settings as SettingsIcon, 
+  ChevronUp, 
+  ChevronDown, 
+  ChevronLeft, 
+  ChevronRight, 
+  PanelLeftClose, 
+  PanelLeftOpen 
+} from "lucide-react";
 import {
   Tabs,
   TabsContent,
@@ -88,6 +98,8 @@ export default function LiveLyricsPage() {
   >("textAlignCenter");
 
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(300);
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState<boolean>(false);
+  const savedWidthRef = useRef<number>(300);
 
   const [newLyricStartTime, setNewLyricStartTime] = useState<number>(0);
   const [newLyricEndTime, setNewLyricEndTime] = useState<number>(0);
@@ -659,15 +671,33 @@ export default function LiveLyricsPage() {
     }
   };
 
+  // 왼쪽 패널 토글
+  const toggleLeftPanel = () => {
+    if (isLeftPanelCollapsed) {
+      // 펼치기
+      setIsLeftPanelCollapsed(false);
+      setLeftPanelWidth(savedWidthRef.current);
+    } else {
+      // 접기
+      savedWidthRef.current = leftPanelWidth;
+      setIsLeftPanelCollapsed(true);
+      setLeftPanelWidth(56); // 아이콘 버튼만 표시할 최소 너비
+    }
+  };
+
   // 드래그로 왼쪽 패널의 너비 조절
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLeftPanelCollapsed) return; // 접혀있을 때는 리사이징 비활성화
+    
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftPanelWidth;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      setLeftPanelWidth(Math.max(200, startWidth + delta));
+      const newWidth = Math.max(200, startWidth + delta);
+      setLeftPanelWidth(newWidth);
+      savedWidthRef.current = newWidth;
     };
 
     const handleMouseUp = () => {
@@ -741,17 +771,6 @@ export default function LiveLyricsPage() {
       window.location.reload();
     }, 100);
   };
-
-  // 비디오 표시 여부 확인을 위한 useEffect
-  useEffect(() => {
-    if (videoContainerRef.current) {
-      if (isVideoFile && audioURL) {
-        videoContainerRef.current.style.display = 'block';
-      } else {
-        videoContainerRef.current.style.display = 'none';
-      }
-    }
-  }, [isVideoFile, audioURL]);
 
   // 정렬된 가사 목록 메모이제이션
   const sortedLyrics = useMemo(() => {
@@ -856,15 +875,28 @@ export default function LiveLyricsPage() {
       </Menubar>
       <div className="h-14" /> {/* 메뉴바 공간 확보 */}
       <div className={styles.mainContent}>
-      <div className={styles.leftPanel} style={{ width: leftPanelWidth, flexShrink: 0 }}>
+        <div className={cn(styles.leftPanel, isLeftPanelCollapsed && styles.collapsed)} 
+             style={{ width: leftPanelWidth, flexShrink: 0 }}>
           <div className={styles.header}>
-            <h1>{t.editor.title}</h1>
+            <h1 className={isLeftPanelCollapsed ? "sr-only" : undefined}>{t.editor.title}</h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleLeftPanel}
+              className="ml-auto"
+              aria-label={isLeftPanelCollapsed ? "패널 펼치기" : "패널 접기"}
+            >
+              {isLeftPanelCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
           </div>
+          
+          {/* 비디오 컨테이너 - 항상 존재하지만 패널 접힘 상태에 따라 hidden */}
           <div 
             ref={videoContainerRef} 
             className={cn(
               "rounded-lg overflow-hidden bg-card border flex-shrink-0",
-              styles.videoContainer
+              styles.videoContainer,
+              isLeftPanelCollapsed && "hidden"
             )}
             style={{ 
               display: isVideoFile && audioURL ? 'block' : 'none',
@@ -875,296 +907,299 @@ export default function LiveLyricsPage() {
           >
             {videoElement}
           </div>
-          <Card className="flex flex-col min-h-0 overflow-hidden">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>{t.editor.title}</CardTitle>
-                  <CardDescription>{t.editor.description}</CardDescription>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="h-8 w-8"
-                >
-                  {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-        </div>
-            </CardHeader>
-            <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
-              {/* 설정 영역 */}
-              <div className={cn("space-y-4 transition-all duration-200", 
-                showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
-              )}>
-        {/* SRT 업로드 */}
-                <div className="space-y-2 flex-shrink-0">
-                  <Label>{t.editor.upload.srt}</Label>
-                  <Input
-                    id="srt-upload"
-                    type="file"
-                    accept=".srt"
-                    onChange={handleSrtUpload}
-                    className="cursor-pointer"
-                  />
-        </div>
-
-                {/* 오디오 업로드 */}
-                <div className="space-y-2 flex-shrink-0">
-                  <Label>{t.editor.upload.audio}</Label>
-                  <Input
-                    type="file"
-                    accept="audio/*,video/mp4"
-                    onChange={handleAudioUpload}
-                    className="cursor-pointer"
-                  />
-                </div>
-        </div>
-
-              {/* 가사 관리 */}
-              <div className="flex flex-col space-y-2 flex-1 min-h-0">
-                <div className="flex items-center justify-between flex-shrink-0">
-                  <Label>{t.editor.lyrics.title}</Label>
-                  <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
-                    {t.editor.lyrics.add}
-                  </Button>
-        </div>
-                <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>{t.editor.dialog.title}</DialogTitle>
-                      <DialogDescription>
-                        {t.editor.dialog.description}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      {isPlaying && !isVideoFile && (
-                        <div className="space-y-4">
-                          <Alert variant="destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>
-                              {t.editor.playback.time_edit_disabled}
-                            </AlertDescription>
-                          </Alert>
-                          <Button 
-                            variant="secondary" 
-                            onClick={handleStop}
-                            className="w-full"
-                          >
-                            <Pause className="mr-2 h-4 w-4" />
-                            {t.editor.playback.stop}
-            </Button>
-          </div>
-        )}
-                      <Tabs 
-                        defaultValue="current" 
-                        className="w-full"
-                        onValueChange={(value) => {
-                          setSelectedTimeTab(value as "current" | "last");
-                          updateNewLyricTimes(value as "current" | "last");
-                        }}
-                      >
-                        <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="current">
-                            {t.editor.dialog.current_time}
-                          </TabsTrigger>
-                          <TabsTrigger value="last">
-                            {t.editor.dialog.last_lyric_time}
-                          </TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="current" className="space-y-4">
-                          <TimeInput
-                            value={newLyricStartTime}
-                            onChange={(value) => setNewLyricStartTime(value)}
-                            label={t.editor.dialog.start_time}
-                            disabled={isPlaying}
-                          />
-                          <TimeInput
-                            value={newLyricEndTime}
-                            onChange={(value) => setNewLyricEndTime(value)}
-                            label={t.editor.dialog.end_time}
-                            disabled={isPlaying}
-                          />
-                        </TabsContent>
-                        <TabsContent value="last" className="space-y-4">
-                          <TimeInput
-                            value={newLyricStartTime}
-                            onChange={(value) => setNewLyricStartTime(value)}
-                            label={t.editor.dialog.start_time}
-                            disabled={isPlaying}
-                          />
-                          <TimeInput
-                            value={newLyricEndTime}
-                            onChange={(value) => setNewLyricEndTime(value)}
-                            label={t.editor.dialog.end_time}
-                            disabled={isPlaying}
-                          />
-                        </TabsContent>
-                      </Tabs>
-                      <div className="space-y-2">
-                        <Label>{t.editor.dialog.lyrics}</Label>
-                        <Input
-                          value={newLyricText}
-                          onChange={(e) => setNewLyricText(e.target.value)}
-                          placeholder={t.editor.dialog.lyrics_placeholder}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsAddLyricDialogOpen(false)}>
-                        {t.editor.dialog.cancel}
-                      </Button>
-                      <Button onClick={handleAddLyric}>{t.editor.dialog.add}</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                <div 
-                  ref={tableRef}
-                  className={cn("border rounded-lg overflow-auto flex-1 table-container")}
-                  onScroll={handleTableScroll}
-                >
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[180px] text-left sticky top-0 bg-background">{t.editor.lyrics.time}</TableHead>
-                        <TableHead className="sticky top-0 bg-background">{t.editor.lyrics.text}</TableHead>
-                        <TableHead className="w-[100px] text-right sticky top-0 bg-background"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedLyrics.map((line, index) => (
-                        <TableRow 
-                          key={index}
-                          className={cn(
-                            "group transition-colors hover:bg-accent/50",
-                            index === activeLyricIndex && "bg-accent/30"
-                          )}
-                        >
-                          <TableCell 
-                            className="font-mono text-sm cursor-pointer"
-                            onClick={() => handleLyricClick(line.start)}
-                          >
-                            {formatTime(line.start)}
-                            <span className="text-muted-foreground"> ~ </span>
-                            {line.end ? formatTime(line.end) : t.editor.lyrics.until_end}
-                          </TableCell>
-                          <TableCell 
-                            className={cn(
-                              "cursor-pointer max-w-[400px] truncate",
-                              index === activeLyricIndex && "font-medium"
-                            )}
-                            onClick={() => handleLyricClick(line.start)}
-                          >
-                            {line.text}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setEditingLyric({ index, line });
-                                  setIsEditLyricDialogOpen(true);
-                                }}
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              >
-                                <span className="sr-only">Edit</span>
-                                ✎
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteLyric(index)}
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              >
-                                <span className="sr-only">Delete</span>
-                                ×
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {lyrics.length === 0 && (
-                        <TableRow>
-                          <TableCell 
-                            colSpan={3} 
-                            className="h-32 text-center text-muted-foreground"
-                          >
-                            {t.editor.lyrics.empty}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                {isUserScrolling && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAutoScroll(true);
-                      setIsUserScrolling(false);
-                    }}
-                    className="w-full mt-2"
-                  >
-                    자동 스크롤 다시 시작
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-      </div>
-
-      {/* Divider for resizing */}
-      <div className={styles.divider} onMouseDown={handleMouseDown}></div>
-
-      {/* 오른쪽: 가사 미리보기 영역 */}
-      <div className={styles.rightPanel}>
-        <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
-            <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
-          <Select
-            value={previewMode}
-            onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
-          >
-            <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder={t.preview.mode.label} />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
-                <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-          <h2>{t.preview.title}</h2>
-        {previewMode === "apple" ? (
-          <div ref={previewRef} className={styles.lyricsPreview}>
-            <div className={styles[alignment]}>
-                {sortedLyrics.map((line, index) => {
-                const isActive = index === activeLyricIndex;
-                return (
-                  <div
-                    key={index}
-                      className={cn(
-                        styles.lyricLine,
-                        isActive ? styles.active : styles.inactive,
-                        !showAnimation && styles.noAnimation
-                      )}
-                      onClick={() => handleLyricClick(line.start)}
-                  >
-                    {line.text}
+          
+          {!isLeftPanelCollapsed && (
+            <Card className="flex flex-col min-h-0 overflow-hidden">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{t.editor.title}</CardTitle>
+                    <CardDescription>{t.editor.description}</CardDescription>
                   </div>
-                );
-              })}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="h-8 w-8"
+                  >
+                    {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
+                {/* 설정 영역 */}
+                <div className={cn("space-y-4 transition-all duration-200", 
+                  showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
+                )}>
+                  {/* SRT 업로드 */}
+                  <div className="space-y-2 flex-shrink-0">
+                    <Label>{t.editor.upload.srt}</Label>
+                    <Input
+                      id="srt-upload"
+                      type="file"
+                      accept=".srt"
+                      onChange={handleSrtUpload}
+                      className="cursor-pointer"
+                    />
+                  </div>
+
+                  {/* 오디오 업로드 */}
+                  <div className="space-y-2 flex-shrink-0">
+                    <Label>{t.editor.upload.audio}</Label>
+                    <Input
+                      type="file"
+                      accept="audio/*,video/mp4"
+                      onChange={handleAudioUpload}
+                      className="cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* 가사 관리 */}
+                <div className="flex flex-col space-y-2 flex-1 min-h-0">
+                  <div className="flex items-center justify-between flex-shrink-0">
+                    <Label>{t.editor.lyrics.title}</Label>
+                    <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
+                      {t.editor.lyrics.add}
+                    </Button>
+                  </div>
+                  <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{t.editor.dialog.title}</DialogTitle>
+                        <DialogDescription>
+                          {t.editor.dialog.description}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        {isPlaying && !isVideoFile && (
+                          <div className="space-y-4">
+                            <Alert variant="destructive">
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertDescription>
+                                {t.editor.playback.time_edit_disabled}
+                              </AlertDescription>
+                            </Alert>
+                            <Button 
+                              variant="secondary" 
+                              onClick={handleStop}
+                              className="w-full"
+                            >
+                              <Pause className="mr-2 h-4 w-4" />
+                              {t.editor.playback.stop}
+                            </Button>
+                          </div>
+                        )}
+                        <Tabs 
+                          defaultValue="current" 
+                          className="w-full"
+                          onValueChange={(value) => {
+                            setSelectedTimeTab(value as "current" | "last");
+                            updateNewLyricTimes(value as "current" | "last");
+                          }}
+                        >
+                          <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="current">
+                              {t.editor.dialog.current_time}
+                            </TabsTrigger>
+                            <TabsTrigger value="last">
+                              {t.editor.dialog.last_lyric_time}
+                            </TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="current" className="space-y-4">
+                            <TimeInput
+                              value={newLyricStartTime}
+                              onChange={(value) => setNewLyricStartTime(value)}
+                              label={t.editor.dialog.start_time}
+                              disabled={isPlaying}
+                            />
+                            <TimeInput
+                              value={newLyricEndTime}
+                              onChange={(value) => setNewLyricEndTime(value)}
+                              label={t.editor.dialog.end_time}
+                              disabled={isPlaying}
+                            />
+                          </TabsContent>
+                          <TabsContent value="last" className="space-y-4">
+                            <TimeInput
+                              value={newLyricStartTime}
+                              onChange={(value) => setNewLyricStartTime(value)}
+                              label={t.editor.dialog.start_time}
+                              disabled={isPlaying}
+                            />
+                            <TimeInput
+                              value={newLyricEndTime}
+                              onChange={(value) => setNewLyricEndTime(value)}
+                              label={t.editor.dialog.end_time}
+                              disabled={isPlaying}
+                            />
+                          </TabsContent>
+                        </Tabs>
+                        <div className="space-y-2">
+                          <Label>{t.editor.dialog.lyrics}</Label>
+                          <Input
+                            value={newLyricText}
+                            onChange={(e) => setNewLyricText(e.target.value)}
+                            placeholder={t.editor.dialog.lyrics_placeholder}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddLyricDialogOpen(false)}>
+                          {t.editor.dialog.cancel}
+                        </Button>
+                        <Button onClick={handleAddLyric}>{t.editor.dialog.add}</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <div 
+                    ref={tableRef}
+                    className={cn("border rounded-lg overflow-auto flex-1 table-container")}
+                    onScroll={handleTableScroll}
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[180px] text-left sticky top-0 bg-background">{t.editor.lyrics.time}</TableHead>
+                          <TableHead className="sticky top-0 bg-background">{t.editor.lyrics.text}</TableHead>
+                          <TableHead className="w-[100px] text-right sticky top-0 bg-background"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedLyrics.map((line, index) => (
+                          <TableRow 
+                            key={index}
+                            className={cn(
+                              "group transition-colors hover:bg-accent/50",
+                              index === activeLyricIndex && "bg-accent/30"
+                            )}
+                          >
+                            <TableCell 
+                              className="font-mono text-sm cursor-pointer"
+                              onClick={() => handleLyricClick(line.start)}
+                            >
+                              {formatTime(line.start)}
+                              <span className="text-muted-foreground"> ~ </span>
+                              {line.end ? formatTime(line.end) : t.editor.lyrics.until_end}
+                            </TableCell>
+                            <TableCell 
+                              className={cn(
+                                "cursor-pointer max-w-[400px] truncate",
+                                index === activeLyricIndex && "font-medium"
+                              )}
+                              onClick={() => handleLyricClick(line.start)}
+                            >
+                              {line.text}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setEditingLyric({ index, line });
+                                    setIsEditLyricDialogOpen(true);
+                                  }}
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                >
+                                  <span className="sr-only">Edit</span>
+                                  ✎
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteLyric(index)}
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                >
+                                  <span className="sr-only">Delete</span>
+                                  ×
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {lyrics.length === 0 && (
+                          <TableRow>
+                            <TableCell 
+                              colSpan={3} 
+                              className="h-32 text-center text-muted-foreground"
+                            >
+                              {t.editor.lyrics.empty}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {isUserScrolling && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAutoScroll(true);
+                        setIsUserScrolling(false);
+                      }}
+                      className="w-full mt-2"
+                    >
+                      자동 스크롤 다시 시작
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        {/* Divider for resizing */}
+        <div className={cn(styles.divider, isLeftPanelCollapsed && styles.hiddenDivider)} onMouseDown={handleMouseDown}></div>
+
+        {/* 오른쪽: 가사 미리보기 영역 */}
+        <div className={styles.rightPanel}>
+          <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
+              <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
+            <Select
+              value={previewMode}
+              onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
+            >
+              <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t.preview.mode.label} />
+              </SelectTrigger>
+              <SelectContent>
+                  <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
+                  <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+            <h2>{t.preview.title}</h2>
+          {previewMode === "apple" ? (
+            <div ref={previewRef} className={styles.lyricsPreview}>
+              <div className={styles[alignment]}>
+                  {sortedLyrics.map((line, index) => {
+                  const isActive = index === activeLyricIndex;
+                  return (
+                    <div
+                      key={index}
+                        className={cn(
+                          styles.lyricLine,
+                          isActive ? styles.active : styles.inactive,
+                          !showAnimation && styles.noAnimation
+                        )}
+                        onClick={() => handleLyricClick(line.start)}
+                    >
+                      {line.text}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className={styles.subtitlePreview}>
-            {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
-          </div>
-        )}
+          ) : (
+            <div className={styles.subtitlePreview}>
+              {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
 
       {/* 오디오 플레이어 (항상 표시) */}
       {audioURL && (

@@ -39,14 +39,34 @@
   background-color: hsl(var(--background) / 0.8);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  transition: width 0.15s ease;
-  min-width: 200px;
+  transition: width 0.3s ease, padding 0.3s ease;
+  min-width: 56px;
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+/* 접힌 왼쪽 패널 스타일 */
+.leftPanel.collapsed {
+  padding: 12px 8px;
+  padding-top: 60px;
+  overflow: visible;
+}
+
+.leftPanel .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  transition: margin 0.3s ease;
+}
+
+.leftPanel.collapsed .header {
+  margin-bottom: 0;
+  justify-content: center;
 }
 
 .videoContainer {
@@ -307,7 +327,7 @@
   background-color: transparent;
   position: relative;
   height: 100%;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, opacity 0.3s ease, width 0.3s ease;
 }
 
 .divider:hover,
@@ -322,6 +342,13 @@
   width: 8px;
   height: 100%;
   cursor: col-resize;
+}
+
+/* 패널이 접혔을 때 divider 스타일 */
+.hiddenDivider {
+  opacity: 0;
+  width: 0;
+  cursor: default;
 }
 
 .header {
