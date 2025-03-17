@@ -65,16 +65,16 @@ export const ko = {
   },
   settings: {
     title: "설정",
-    language: {
-      label: "언어",
-      ko: "한국어",
-      en: "English"
-    },
-    theme: {
-      label: "테마",
-      light: "밝은 테마",
-      dark: "어두운 테마",
-      system: "시스템 설정"
-    }
+    language: "언어",
+    theme: "테마",
+    light: "밝은 테마",
+    dark: "어두운 테마",
+    system: "시스템 설정",
+    alignment: "가사 정렬",
+    left: "왼쪽 정렬",
+    center: "가운데 정렬",
+    right: "오른쪽 정렬",
+    animation: "애니메이션",
+    animation_description: "가사 전환 시 부드러운 애니메이션 효과를 적용합니다."
   }
 } as const; 
