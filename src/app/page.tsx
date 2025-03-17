@@ -613,22 +613,36 @@ export default function LiveLyricsPage() {
   };
 
   // 가사 추가 다이얼로그 내용
+  const [selectedTimeTab, setSelectedTimeTab] = useState<"current" | "last">("current");
+
   const handleAddLyricDialogOpen = () => {
-    // 재생 중인 경우 현재 시간을 시작 시간으로 설정
-    if (audioRef.current) {
-      setNewLyricStartTime(audioRef.current.currentTime);
-      setNewLyricEndTime(audioRef.current.currentTime + 5);
+    setSelectedTimeTab("current");
+    updateNewLyricTimes("current");
+    setIsAddLyricDialogOpen(true);
+  };
+
+  const updateNewLyricTimes = (tab: "current" | "last") => {
+    if (tab === "current") {
+      if (audioRef.current) {
+        setNewLyricStartTime(audioRef.current.currentTime);
+        setNewLyricEndTime(audioRef.current.currentTime + 5);
+      } else {
+        setNewLyricStartTime(0);
+        setNewLyricEndTime(5);
+      }
     } else {
       const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
       if (lastLyric?.end) {
         setNewLyricStartTime(lastLyric.end);
         setNewLyricEndTime(lastLyric.end + 5);
+      } else if (lastLyric?.start) {
+        setNewLyricStartTime(lastLyric.start + 5);
+        setNewLyricEndTime(lastLyric.start + 10);
       } else {
         setNewLyricStartTime(0);
         setNewLyricEndTime(5);
       }
     }
-    setIsAddLyricDialogOpen(true);
   };
 
   // 드래그로 왼쪽 패널의 너비 조절
@@ -928,20 +942,31 @@ export default function LiveLyricsPage() {
                           </Button>
                         </div>
                       )}
-                      <Tabs defaultValue="current" className="w-full">
+                      <Tabs 
+                        defaultValue="current" 
+                        className="w-full"
+                        onValueChange={(value) => {
+                          setSelectedTimeTab(value as "current" | "last");
+                          updateNewLyricTimes(value as "current" | "last");
+                        }}
+                      >
                         <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="current">{t.editor.dialog.current_time}</TabsTrigger>
-                          <TabsTrigger value="last">{t.editor.dialog.last_lyric_time}</TabsTrigger>
+                          <TabsTrigger value="current">
+                            {t.editor.dialog.current_time}
+                          </TabsTrigger>
+                          <TabsTrigger value="last">
+                            {t.editor.dialog.last_lyric_time}
+                          </TabsTrigger>
                         </TabsList>
                         <TabsContent value="current" className="space-y-4">
                           <TimeInput
-                            value={audioRef.current?.currentTime || 0}
+                            value={newLyricStartTime}
                             onChange={(value) => setNewLyricStartTime(value)}
                             label={t.editor.dialog.start_time}
                             disabled={isPlaying}
                           />
                           <TimeInput
-                            value={audioRef.current?.currentTime ? audioRef.current.currentTime + 5 : 5}
+                            value={newLyricEndTime}
                             onChange={(value) => setNewLyricEndTime(value)}
                             label={t.editor.dialog.end_time}
                             disabled={isPlaying}
@@ -949,19 +974,13 @@ export default function LiveLyricsPage() {
                         </TabsContent>
                         <TabsContent value="last" className="space-y-4">
                           <TimeInput
-                            value={(() => {
-                              const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
-                              return lastLyric?.end || 0;
-                            })()}
+                            value={newLyricStartTime}
                             onChange={(value) => setNewLyricStartTime(value)}
                             label={t.editor.dialog.start_time}
                             disabled={isPlaying}
                           />
                           <TimeInput
-                            value={(() => {
-                              const lastLyric = [...lyrics].sort((a, b) => b.start - a.start)[0];
-                              return (lastLyric?.end || 0) + 5;
-                            })()}
+                            value={newLyricEndTime}
                             onChange={(value) => setNewLyricEndTime(value)}
                             label={t.editor.dialog.end_time}
                             disabled={isPlaying}
