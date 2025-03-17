@@ -7,7 +7,7 @@ const nextConfig = {
     unoptimized: true
   },
   experimental: {
-    optimizeCss: true,
+    optimizeCss: false
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {

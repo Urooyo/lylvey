@@ -9,7 +9,7 @@ const translations = {
   en,
 } as const;
 
-export type TranslationType = typeof ko;
+export type TranslationType = typeof ko | typeof en;
 
 export function getText(lang: Language = 'ko'): TranslationType {
   return translations[lang];
