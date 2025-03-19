@@ -4,6 +4,9 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import styles from "./page.module.css";
 import { getText, Language } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { LyricLine, HistoryState, LyricState } from "@/types/lyrics";
+import LyricsPreview from "@/components/LyricsPreview";
+import SubtitlePreview from "@/components/SubtitlePreview";
 
 // shadcn/ui 컴포넌트 import
 import { Button } from "@/components/ui/button";
@@ -70,18 +73,6 @@ import {
   MenubarShortcut,
   MenubarTrigger,
 } from "@/components/ui/menubar";
-
-interface LyricLine {
-  start: number;
-  end?: number;
-  text: string;
-}
-
-interface HistoryState {
-  lyrics: LyricLine[];
-  audioFile: File | null;
-  timestamp: number;
-}
 
 export default function LiveLyricsPage() {
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
@@ -163,9 +154,10 @@ export default function LiveLyricsPage() {
     });
     
     // 활성 인덱스가 변경될 때 로깅
-    if (activeIndex !== -1 && activeIndex !== prevActiveIndexRef.current) {
+    if (activeIndex !== -1 && activeIndex !== prevActiveIndex) {
       const activeLyric = lyricsArray[activeIndex];
       console.log(`활성 가사 변경: 인덱스=${activeIndex}, 시작=${formatTime(activeLyric.start)}, 종료=${activeLyric.end ? formatTime(activeLyric.end) : '없음'}`);
+      prevActiveIndex = activeIndex;
     }
     
     // 활성화된 가사가 없는 경우 (가사 사이 간격이거나 모든 가사가 종료된 경우)
@@ -189,6 +181,10 @@ export default function LiveLyricsPage() {
     
     return activeIndex;
   }, []);
+
+  // 변수 선언을 추가
+  // 활성 인덱스 변경 추적용 변수
+  let prevActiveIndex = -1;
 
   // 가사 상태 계산을 위한 추가 함수
   const getLyricState = useCallback((index: number, currentTime: number, lyrics: LyricLine[]) => {
@@ -273,9 +269,6 @@ export default function LiveLyricsPage() {
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
-      }
-      if (scrollAnimationRef.current) {
-        cancelAnimationFrame(scrollAnimationRef.current);
       }
       if (audioURL) {
         URL.revokeObjectURL(audioURL);
@@ -404,39 +397,10 @@ export default function LiveLyricsPage() {
       if (isVideoFile && videoRef.current) {
         videoRef.current.currentTime = startTime;
       }
-      
-      // 4. 스크롤 즉시 적용 (애니메이션 없이)
-      if (previewMode === "apple" && previewRef.current) {
-        const container = previewRef.current;
-        if (!container) return;
-        
-        const targetIndex = sortedLyrics.findIndex(line => line.start === startTime);
-        const targetElement = container.querySelector(`[data-index="${targetIndex}"]`);
-        
-        if (targetElement) {
-          // 자동 스크롤 중지 및 애니메이션 취소
-          if (scrollAnimationRef.current) {
-            cancelAnimationFrame(scrollAnimationRef.current);
-            scrollAnimationRef.current = null;
-          }
-          
-          // 대상 요소 위치로 즉시 스크롤
-          const containerRect = container.getBoundingClientRect();
-          const targetRect = targetElement.getBoundingClientRect();
-          const offset = targetRect.top - containerRect.top - 
-                        (container.clientHeight / 2) + (targetRect.height / 2);
-                        
-          // 애니메이션 없이 즉시 스크롤
-          container.scrollTop = container.scrollTop + offset;
-          
-          // 활성 인덱스 직접 업데이트
-          prevActiveIndexRef.current = targetIndex;
-        }
-      }
     } catch (err) {
       console.error("가사 클릭 처리 오류:", err);
     }
-  }, [previewMode, sortedLyrics, isVideoFile]);
+  }, [isVideoFile]);
 
   // 시간을 hh:mm:ss.ms 형식으로 변환
   const formatTime = (seconds: number): string => {
@@ -650,73 +614,6 @@ export default function LiveLyricsPage() {
       setHistoryIndex(newHistory.length - 1);
     }
   };
-
-  // 미리보기 영역에서 활성 가사가 보이도록 부드럽게 스크롤 - 최적화
-  const previewRef = useRef<HTMLDivElement>(null);
-  const prevActiveIndexRef = useRef<number>(-1);
-  const scrollAnimationRef = useRef<number | null>(null);
-  
-  useEffect(() => {
-    // 활성 가사 인덱스가 변경된 경우에만 스크롤 수행
-    if (activeLyricIndex !== prevActiveIndexRef.current && previewMode === "apple" && previewRef.current) {
-      prevActiveIndexRef.current = activeLyricIndex;
-      
-      const container = previewRef.current;
-      const activeElement = container.querySelector(`[data-index="${activeLyricIndex}"]`);
-      
-      if (activeElement) {
-        // 이전 스크롤 애니메이션 취소
-        if (scrollAnimationRef.current) {
-          cancelAnimationFrame(scrollAnimationRef.current);
-          scrollAnimationRef.current = null;
-        }
-
-        // 스크롤 목표 계산
-        const containerRect = container.getBoundingClientRect();
-        const activeRect = activeElement.getBoundingClientRect();
-        const offset =
-          activeRect.top -
-          containerRect.top -
-          container.clientHeight / 2 +
-          activeRect.height / 2;
-        
-        // 스크롤 애니메이션 함수
-        const duration = 800; // 애니메이션 지속 시간
-        const startTime = performance.now();
-        const startPosition = container.scrollTop;
-        const targetPosition = container.scrollTop + offset;
-        
-        // 이미 가까이 있으면 애니메이션 건너뛰기 (불필요한 애니메이션 최적화)
-        if (Math.abs(offset) < 10) {
-          return;
-        }
-        
-        // easeOutQuint 이징 함수 - 부드러운 애니메이션
-        const easeOutQuint = (t: number): number => {
-          return 1 - Math.pow(1 - t, 5);
-        };
-        
-        // 애니메이션 프레임 실행 - 성능 최적화
-        const animateScroll = (timestamp: number) => {
-          const elapsed = timestamp - startTime;
-          const progress = Math.min(elapsed / duration, 1);
-          const easedProgress = easeOutQuint(progress);
-          
-          // transform 사용하지 않고 scrollTop 직접 조작 (더 성능 좋음)
-          container.scrollTop = startPosition + (targetPosition - startPosition) * easedProgress;
-          
-          if (progress < 1) {
-            scrollAnimationRef.current = requestAnimationFrame(animateScroll);
-          } else {
-            scrollAnimationRef.current = null;
-          }
-        };
-        
-        // 애니메이션 즉시 시작
-        scrollAnimationRef.current = requestAnimationFrame(animateScroll);
-      }
-    }
-  }, [activeLyricIndex, previewMode]);
 
   // 시간 입력 컴포넌트
   const TimeInput = ({ value, onChange, label, disabled }: { value: number; onChange: (value: number) => void; label: string; disabled?: boolean }) => {
@@ -984,61 +881,6 @@ export default function LiveLyricsPage() {
       setIsUserScrolling(false);
     }, 5000);
   };
-
-  // 메모이제이션된 미리보기 렌더링 최적화 - 가사 애니메이션 최적화
-  const LyricsPreview = useMemo(() => {
-    if (previewMode !== "apple") return null;
-    
-    // 가상화된 높이 계산 (가상 리스트의 시작 위치를 설정하기 위함)
-    const paddingTop = virtualizedStartIndex * 48; // 평균 라인 높이 48px
-    
-    return (
-      <div ref={previewRef} className={styles.lyricsPreview}>
-        <div 
-          className={styles[alignment]} 
-          style={
-            sortedLyrics.length > VIRTUALIZE_THRESHOLD 
-            ? { paddingTop: `${paddingTop}px`, paddingBottom: `${(sortedLyrics.length - virtualizedStartIndex - virtualizedLyrics.length) * 48}px` }
-            : {}
-          }
-        >
-          {virtualizedLyrics.map((line, localIndex) => {
-            const globalIndex = sortedLyrics.length > VIRTUALIZE_THRESHOLD 
-              ? virtualizedStartIndex + localIndex 
-              : localIndex;
-            
-            // 가사의 상태 계산 (current, past, future)
-            const lyricState = getLyricState(globalIndex, currentTime, sortedLyrics);
-            const isActive = globalIndex === activeLyricIndex;
-            
-            return (
-              <div
-                key={`${globalIndex}-${line.start}-${line.end || 'end'}`}
-                className={cn(
-                  styles.lyricLine,
-                  // 상태에 따른 스타일 우선순위 조정
-                  lyricState === 'past' ? styles.past : 
-                  lyricState === 'future' ? styles.future : 
-                  (isActive ? styles.active : styles.inactive),
-                  !showAnimation && styles.noAnimation
-                )}
-                onClick={(e) => {
-                  e.stopPropagation(); // 이벤트 버블링 방지
-                  handleLyricClick(line.start);
-                }}
-                data-index={globalIndex}
-                data-start={line.start}
-                data-end={line.end}
-                data-state={lyricState}
-              >
-                {line.text}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }, [previewMode, sortedLyrics, virtualizedLyrics, virtualizedStartIndex, alignment, activeLyricIndex, showAnimation, handleLyricClick, currentTime, getLyricState]);
 
   return (
     <main className={styles.liveLyricsPage}>
@@ -1373,28 +1215,39 @@ export default function LiveLyricsPage() {
       {/* 오른쪽: 가사 미리보기 영역 */}
       <div className={styles.rightPanel}>
         <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
-              <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
+          <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
           <Select
             value={previewMode}
             onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
           >
             <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder={t.preview.mode.label} />
+              <SelectValue placeholder={t.preview.mode.label} />
             </SelectTrigger>
             <SelectContent>
-                  <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
-                  <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
+              <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
+              <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-            <h2>{t.preview.title}</h2>
+        <h2>{t.preview.title}</h2>
         {previewMode === "apple" ? (
-            LyricsPreview
+          <LyricsPreview
+            lyrics={sortedLyrics}
+            virtualizedLyrics={virtualizedLyrics}
+            virtualizedStartIndex={virtualizedStartIndex}
+            currentTime={currentTime}
+            activeLyricIndex={activeLyricIndex}
+            alignment={alignment}
+            showAnimation={showAnimation}
+            handleLyricClick={handleLyricClick}
+            getLyricState={getLyricState}
+          />
         ) : (
-          <div className={styles.subtitlePreview}>
-            {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
-          </div>
+          <SubtitlePreview 
+            lyrics={sortedLyrics}
+            activeLyricIndex={activeLyricIndex}
+          />
         )}
       </div>
     </div>
@@ -1408,7 +1261,7 @@ export default function LiveLyricsPage() {
             onDurationChange={setDuration}
             currentTime={currentTime}
             onSeek={handleTimeUpdate}
-            audioRef={audioRef as React.RefObject<HTMLAudioElement>}
+            audioRef={audioRef}
             onPlayingChange={setIsPlaying}
             isVideoFile={isVideoFile}
           />
