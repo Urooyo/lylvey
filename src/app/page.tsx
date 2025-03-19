@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { LyricLine, HistoryState, LyricState } from "@/types/lyrics";
 import LyricsPreview from "@/components/LyricsPreview";
 import SubtitlePreview from "@/components/SubtitlePreview";
+import FunLyricsPreview from "@/components/FunLyricsPreview";
 
 // shadcn/ui 컴포넌트 import
 import { Button } from "@/components/ui/button";
@@ -81,7 +82,7 @@ export default function LiveLyricsPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [previewMode, setPreviewMode] = useState<"apple" | "subtitle">("apple");
+  const [previewMode, setPreviewMode] = useState<"apple" | "subtitle" | "fun">("apple");
   const [duration, setDuration] = useState<number>(0);
 
   const [alignment, setAlignment] = useState<
@@ -959,8 +960,8 @@ export default function LiveLyricsPage() {
             }}
           >
             {videoElement}
-          </div>
-          
+        </div>
+
           {!isLeftPanelCollapsed && (
             <Card className="flex flex-col min-h-0 overflow-hidden">
               <CardHeader>
@@ -1218,7 +1219,7 @@ export default function LiveLyricsPage() {
           <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
           <Select
             value={previewMode}
-            onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
+            onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle" | "fun")}
           >
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder={t.preview.mode.label} />
@@ -1226,6 +1227,7 @@ export default function LiveLyricsPage() {
             <SelectContent>
               <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
               <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
+              <SelectItem value="fun">{t.preview.mode.fun}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -1243,10 +1245,22 @@ export default function LiveLyricsPage() {
             handleLyricClick={handleLyricClick}
             getLyricState={getLyricState}
           />
-        ) : (
+        ) : previewMode === "subtitle" ? (
           <SubtitlePreview 
             lyrics={sortedLyrics}
             activeLyricIndex={activeLyricIndex}
+          />
+        ) : (
+          <FunLyricsPreview
+            lyrics={sortedLyrics}
+            virtualizedLyrics={virtualizedLyrics}
+            virtualizedStartIndex={virtualizedStartIndex}
+            currentTime={currentTime}
+            activeLyricIndex={activeLyricIndex}
+            alignment={alignment}
+            showAnimation={showAnimation}
+            handleLyricClick={handleLyricClick}
+            getLyricState={getLyricState}
           />
         )}
       </div>

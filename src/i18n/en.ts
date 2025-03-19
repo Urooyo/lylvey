@@ -60,7 +60,8 @@ export const en = {
     mode: {
       label: "Preview Mode",
       apple: "Apple Music Style",
-      subtitle: "Subtitle"
+      subtitle: "Subtitle",
+      fun: "Playful Mode"
     }
   },
   settings: {

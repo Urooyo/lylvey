@@ -60,7 +60,8 @@ export const ko = {
     mode: {
       label: "미리보기 모드",
       apple: "애플 뮤직 가사",
-      subtitle: "자막"
+      subtitle: "자막",
+      fun: "장난스러운 모드"
     }
   },
   settings: {
