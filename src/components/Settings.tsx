@@ -1,19 +1,20 @@
-import { Settings as SettingsIcon, Moon, Sun } from 'lucide-react';
+import { Settings as SettingsIcon, Moon, Sun, AlignLeft, AlignCenter, AlignRight, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Label } from './ui/label';
 import { getText, Language } from '@/i18n';
 import { useTheme } from 'next-themes';
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SettingsProps {
   language: Language;
@@ -36,55 +37,109 @@ export function Settings({
   const { theme, setTheme } = useTheme();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Sheet>
+      <SheetTrigger asChild>
         <Button variant="ghost" size="icon">
           <SettingsIcon className="h-[1.2rem] w-[1.2rem]" />
           <span className="sr-only">설정 열기</span>
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuLabel>설정</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground px-2">
-            언어
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => onLanguageChange('ko')}>
-            {language === 'ko' && '✓ '}한국어
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onLanguageChange('en')}>
-            {language === 'en' && '✓ '}English
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground px-2">
-            가사 정렬
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => onAlignmentChange('textAlignLeft')}>
-            {alignment === 'textAlignLeft' && '✓ '}왼쪽 정렬
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAlignmentChange('textAlignCenter')}>
-            {alignment === 'textAlignCenter' && '✓ '}가운데 정렬
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAlignmentChange('textAlignRight')}>
-            {alignment === 'textAlignRight' && '✓ '}오른쪽 정렬
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground px-2">
-            애니메이션
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => onAnimationChange(true)}>
-            {showAnimation && '✓ '}애니메이션 켜기
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onAnimationChange(false)}>
-            {!showAnimation && '✓ '}애니메이션 끄기
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle>{t.settings.title}</SheetTitle>
+        </SheetHeader>
+        <div className="space-y-6 py-6">
+          {/* 언어 설정 */}
+          <div className="space-y-2">
+            <Label className="text-base">{t.settings.language}</Label>
+            <Select value={language} onValueChange={(value) => onLanguageChange(value as Language)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="언어 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ko">한국어</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* 테마 설정 */}
+          <div className="space-y-2">
+            <Label className="text-base">{t.settings.theme}</Label>
+            <Select value={theme || 'system'} onValueChange={setTheme}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="테마 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="light">
+                  <div className="flex items-center">
+                    <Sun className="h-4 w-4 mr-2" />
+                    <span>{t.settings.light}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="dark">
+                  <div className="flex items-center">
+                    <Moon className="h-4 w-4 mr-2" />
+                    <span>{t.settings.dark}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="system">{t.settings.system}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* 가사 정렬 설정 */}
+          <div className="space-y-2">
+            <Label className="text-base">{t.settings.alignment}</Label>
+            <Select value={alignment} onValueChange={(value) => onAlignmentChange(value as typeof alignment)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="정렬 방식 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="textAlignLeft">
+                  <div className="flex items-center">
+                    <AlignLeft className="h-4 w-4 mr-2" />
+                    <span>{t.settings.left}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="textAlignCenter">
+                  <div className="flex items-center">
+                    <AlignCenter className="h-4 w-4 mr-2" />
+                    <span>{t.settings.center}</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="textAlignRight">
+                  <div className="flex items-center">
+                    <AlignRight className="h-4 w-4 mr-2" />
+                    <span>{t.settings.right}</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator />
+
+          {/* 애니메이션 설정 */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-base">{t.settings.animation}</Label>
+              <p className="text-sm text-muted-foreground">
+                {t.settings.animation_description}
+              </p>
+            </div>
+            <Switch
+              checked={showAnimation}
+              onCheckedChange={onAnimationChange}
+              className="data-[state=checked]:bg-primary"
+            />
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 } 

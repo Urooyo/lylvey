@@ -4,6 +4,10 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from "react"
 import styles from "./page.module.css";
 import { getText, Language } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { LyricLine, HistoryState, LyricState } from "@/types/lyrics";
+import LyricsPreview from "@/components/LyricsPreview";
+import SubtitlePreview from "@/components/SubtitlePreview";
+import FunLyricsPreview from "@/components/FunLyricsPreview";
 
 // shadcn/ui 컴포넌트 import
 import { Button } from "@/components/ui/button";
@@ -44,7 +48,17 @@ import { Slider } from "@/components/ui/slider";
 import { Settings } from '@/components/Settings';
 import { AudioPlayer } from '@/components/AudioPlayer';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, Pause, Settings as SettingsIcon, ChevronUp, ChevronDown } from "lucide-react";
+import { 
+  AlertCircle, 
+  Pause, 
+  Settings as SettingsIcon, 
+  ChevronUp, 
+  ChevronDown, 
+  ChevronLeft, 
+  ChevronRight, 
+  PanelLeftClose, 
+  PanelLeftOpen 
+} from "lucide-react";
 import {
   Tabs,
   TabsContent,
@@ -61,18 +75,6 @@ import {
   MenubarTrigger,
 } from "@/components/ui/menubar";
 
-interface LyricLine {
-  start: number;
-  end?: number;
-  text: string;
-}
-
-interface HistoryState {
-  lyrics: LyricLine[];
-  audioFile: File | null;
-  timestamp: number;
-}
-
 export default function LiveLyricsPage() {
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [history, setHistory] = useState<HistoryState[]>([]);
@@ -80,7 +82,7 @@ export default function LiveLyricsPage() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioURL, setAudioURL] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [previewMode, setPreviewMode] = useState<"apple" | "subtitle">("apple");
+  const [previewMode, setPreviewMode] = useState<"apple" | "subtitle" | "fun">("apple");
   const [duration, setDuration] = useState<number>(0);
 
   const [alignment, setAlignment] = useState<
@@ -88,6 +90,8 @@ export default function LiveLyricsPage() {
   >("textAlignCenter");
 
   const [leftPanelWidth, setLeftPanelWidth] = useState<number>(300);
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState<boolean>(false);
+  const savedWidthRef = useRef<number>(300);
 
   const [newLyricStartTime, setNewLyricStartTime] = useState<number>(0);
   const [newLyricEndTime, setNewLyricEndTime] = useState<number>(0);
@@ -118,14 +122,127 @@ export default function LiveLyricsPage() {
   const lastFrameTimeRef = useRef<number>(0);
   const targetFPSInterval = 1000 / 30; // 30fps로 제한
 
-  // 활성 가사 인덱스 계산
-  const activeLyricIndex = lyrics.findIndex((line, index) => {
-    if (index === lyrics.length - 1) {
-      return currentTime >= line.start;
-    } else {
-      return currentTime >= line.start && currentTime < lyrics[index + 1].start;
+  // 가사 프리뷰 최적화 관련 상수 및 유틸리티 함수
+  const VIRTUALIZE_THRESHOLD = 50; // 가사가 이 개수 이상일 때 가상화 적용
+
+  // 활성 가사 인덱스 계산 - 메모이제이션 적용
+  const getActiveLyricIndex = useCallback((currentTime: number, lyricsArray: LyricLine[]): number => {
+    if (lyricsArray.length === 0) return -1;
+    
+    // 디버깅: 현재 시간 로깅 (10초마다 한 번씩만)
+    if (Math.floor(currentTime * 10) % 100 === 0) {
+      console.log(`현재 시간: ${formatTime(currentTime)}`);
+      
+      // 가사 상태 확인 (현재 시간 근처의 가사만)
+      const nearLyrics = lyricsArray.filter(line => 
+        Math.abs(line.start - currentTime) < 10 || 
+        (line.end && Math.abs(line.end - currentTime) < 10)
+      );
+      
+      if (nearLyrics.length > 0) {
+        console.log('현재 시간 근처 가사:', nearLyrics.map(line => ({
+          시작: formatTime(line.start),
+          종료: line.end ? formatTime(line.end) : '없음',
+          텍스트: line.text.substring(0, 20) + (line.text.length > 20 ? '...' : '')
+        })));
+      }
     }
-  });
+    
+    // 현재 시간에 해당하는 가사 찾기 (현재 활성화된 가사)
+    const activeIndex = lyricsArray.findIndex((line) => {
+      // 현재 시간이 시작 시간과 종료 시간 사이에 있는 경우만 활성화
+      return currentTime >= line.start && (!line.end || currentTime < line.end);
+    });
+    
+    // 활성 인덱스가 변경될 때 로깅
+    if (activeIndex !== -1 && activeIndex !== prevActiveIndex) {
+      const activeLyric = lyricsArray[activeIndex];
+      console.log(`활성 가사 변경: 인덱스=${activeIndex}, 시작=${formatTime(activeLyric.start)}, 종료=${activeLyric.end ? formatTime(activeLyric.end) : '없음'}`);
+      prevActiveIndex = activeIndex;
+    }
+    
+    // 활성화된 가사가 없는 경우 (가사 사이 간격이거나 모든 가사가 종료된 경우)
+    if (activeIndex === -1) {
+      // 1. 종료된 가사 중 가장 마지막 가사 찾기
+      const lastEndedLyric = lyricsArray
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => line.end && currentTime >= line.end)
+        .sort((a, b) => b.line.end! - a.line.end!)[0];
+      
+      if (lastEndedLyric) {
+        console.log(`모든 가사 종료됨: 마지막 가사 유지 (인덱스=${lastEndedLyric.index})`);
+        return lastEndedLyric.index;
+      }
+      
+      // 2. 아직 시작 전인 경우 첫 번째 가사 반환
+      if (lyricsArray.length > 0 && currentTime < lyricsArray[0].start) {
+        return 0;
+      }
+    }
+    
+    return activeIndex;
+  }, []);
+
+  // 변수 선언을 추가
+  // 활성 인덱스 변경 추적용 변수
+  let prevActiveIndex = -1;
+
+  // 가사 상태 계산을 위한 추가 함수
+  const getLyricState = useCallback((index: number, currentTime: number, lyrics: LyricLine[]) => {
+    const line = lyrics[index];
+    if (!line) return 'future';
+    
+    // 현재 시간이 가사의 시작 시간보다 작으면 '미래' 가사
+    if (currentTime < line.start) {
+      return 'future';
+    }
+    
+    // 현재 시간이 가사의 종료 시간보다 크면 '과거' 가사
+    if (line.end && currentTime >= line.end) {
+      return 'past';
+    }
+    
+    // 그 외의 경우는 '현재' 가사
+    return 'current';
+  }, []);
+
+  // 정렬된 가사 목록 메모이제이션
+  const sortedLyrics = useMemo(() => {
+    return [...lyrics].sort((a, b) => a.start - b.start);
+  }, [lyrics]);
+
+  // 활성 가사 인덱스 메모이제이션
+  const activeLyricIndex = useMemo(() => 
+    getActiveLyricIndex(currentTime, sortedLyrics), 
+  [currentTime, sortedLyrics, getActiveLyricIndex]);
+
+  // 가상화된 가사 목록 - 활성 가사 주변 항목만 렌더링
+  const virtualizedLyrics = useMemo(() => {
+    if (sortedLyrics.length <= VIRTUALIZE_THRESHOLD) {
+      return sortedLyrics; // 적은 수의 가사는 전체 렌더링
+    }
+
+    // 활성 인덱스가 없는 경우(-1)를 처리
+    const safeActiveIndex = activeLyricIndex >= 0 ? activeLyricIndex : 0;
+    
+    const windowSize = 20; // 활성 항목 위아래로 표시할 항목 수 (증가)
+    const start = Math.max(0, safeActiveIndex - windowSize);
+    const end = Math.min(sortedLyrics.length, safeActiveIndex + windowSize + 1);
+    
+    return sortedLyrics.slice(start, end);
+  }, [sortedLyrics, activeLyricIndex]);
+
+  // 가상화된 가사의 시작 인덱스
+  const virtualizedStartIndex = useMemo(() => {
+    if (sortedLyrics.length <= VIRTUALIZE_THRESHOLD) {
+      return 0;
+    }
+    
+    // 활성 인덱스가 없는 경우(-1)를 처리
+    const safeActiveIndex = activeLyricIndex >= 0 ? activeLyricIndex : 0;
+    const windowSize = 20; // 활성 항목 위아래로 표시할 항목 수 (증가)
+    return Math.max(0, safeActiveIndex - windowSize);
+  }, [sortedLyrics.length, activeLyricIndex]);
 
   // 비디오 동기화 최적화
   const syncVideo = useCallback((time: number) => {
@@ -146,34 +263,7 @@ export default function LiveLyricsPage() {
       }
       syncVideo(time);
     }
-
-    // 현재 시간이 다음 가사의 시작 시간을 넘어갔는지 확인
-    const currentIndex = lyrics.findIndex((line, index) => {
-      if (index === lyrics.length - 1) {
-        return time >= line.start;
-      } else {
-        return time >= line.start && time < lyrics[index + 1].start;
-      }
-    });
-
-    if (currentIndex !== activeLyricIndex) {
-      // 가사 미리보기 영역 스크롤 업데이트
-      if (previewMode === "apple" && previewRef.current) {
-        const container = previewRef.current;
-        const activeElement = container.querySelector(`.${styles.active}`);
-        if (activeElement) {
-          const containerRect = container.getBoundingClientRect();
-          const activeRect = activeElement.getBoundingClientRect();
-          const offset =
-            activeRect.top -
-            containerRect.top -
-            container.clientHeight / 2 +
-            activeRect.height / 2;
-          container.scrollTo({ top: container.scrollTop + offset, behavior: "smooth" });
-        }
-      }
-    }
-  }, [isVideoFile, lyrics, previewMode, syncVideo]);
+  }, [isVideoFile, syncVideo]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
@@ -292,13 +382,26 @@ export default function LiveLyricsPage() {
     );
   }, [audioURL, handleTimeUpdate, audioFile?.type]);
 
-  // 가사 클릭 핸들러
-  const handleLyricClick = (startTime: number) => {
-    if (audioRef.current) {
+  // 가사 클릭 핸들러 개선
+  const handleLyricClick = useCallback((startTime: number) => {
+    if (!audioRef.current) return;
+    
+    try {
+      // 1. 현재 재생 상태 저장
+      const wasPlaying = !audioRef.current.paused;
+      
+      // 2. 정확한 시간 설정 (일시 정지 없이 직접 설정)
       audioRef.current.currentTime = startTime;
       setCurrentTime(startTime);
+      
+      // 3. 비디오 동기화 (필요시)
+      if (isVideoFile && videoRef.current) {
+        videoRef.current.currentTime = startTime;
+      }
+    } catch (err) {
+      console.error("가사 클릭 처리 오류:", err);
     }
-  };
+  }, [isVideoFile]);
 
   // 시간을 hh:mm:ss.ms 형식으로 변환
   const formatTime = (seconds: number): string => {
@@ -338,6 +441,7 @@ export default function LiveLyricsPage() {
       const end = srtTimeToSeconds(match[3]);
       const text = match[4].trim();
       lines.push({ start, end, text });
+      console.log(`가사 파싱: 시작=${formatTime(start)}, 종료=${formatTime(end)}, 텍스트=${text}`);
     }
     return lines;
   };
@@ -512,25 +616,6 @@ export default function LiveLyricsPage() {
     }
   };
 
-  // 미리보기 영역에서 활성 가사가 보이도록 부드럽게 스크롤
-  const previewRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (previewMode === "apple" && previewRef.current) {
-      const container = previewRef.current;
-      const activeElement = container.querySelector(`.${styles.active}`);
-      if (activeElement) {
-        const containerRect = container.getBoundingClientRect();
-        const activeRect = activeElement.getBoundingClientRect();
-        const offset =
-          activeRect.top -
-          containerRect.top -
-          container.clientHeight / 2 +
-          activeRect.height / 2;
-        container.scrollTo({ top: container.scrollTop + offset, behavior: "smooth" });
-      }
-    }
-  }, [activeLyricIndex, previewMode]);
-
   // 시간 입력 컴포넌트
   const TimeInput = ({ value, onChange, label, disabled }: { value: number; onChange: (value: number) => void; label: string; disabled?: boolean }) => {
     const [inputValue, setInputValue] = useState(formatTime(value));
@@ -623,7 +708,7 @@ export default function LiveLyricsPage() {
 
   const updateNewLyricTimes = (tab: "current" | "last") => {
     if (tab === "current") {
-      if (audioRef.current) {
+    if (audioRef.current) {
         setNewLyricStartTime(audioRef.current.currentTime);
         setNewLyricEndTime(audioRef.current.currentTime + 5);
       } else {
@@ -645,15 +730,33 @@ export default function LiveLyricsPage() {
     }
   };
 
+  // 왼쪽 패널 토글
+  const toggleLeftPanel = () => {
+    if (isLeftPanelCollapsed) {
+      // 펼치기
+      setIsLeftPanelCollapsed(false);
+      setLeftPanelWidth(savedWidthRef.current);
+    } else {
+      // 접기
+      savedWidthRef.current = leftPanelWidth;
+      setIsLeftPanelCollapsed(true);
+      setLeftPanelWidth(56); // 아이콘 버튼만 표시할 최소 너비
+    }
+  };
+
   // 드래그로 왼쪽 패널의 너비 조절
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLeftPanelCollapsed) return; // 접혀있을 때는 리사이징 비활성화
+    
     e.preventDefault();
     const startX = e.clientX;
     const startWidth = leftPanelWidth;
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
       const delta = moveEvent.clientX - startX;
-      setLeftPanelWidth(Math.max(200, startWidth + delta));
+      const newWidth = Math.max(200, startWidth + delta);
+      setLeftPanelWidth(newWidth);
+      savedWidthRef.current = newWidth;
     };
 
     const handleMouseUp = () => {
@@ -727,22 +830,6 @@ export default function LiveLyricsPage() {
       window.location.reload();
     }, 100);
   };
-
-  // 비디오 표시 여부 확인을 위한 useEffect
-  useEffect(() => {
-    if (videoContainerRef.current) {
-      if (isVideoFile && audioURL) {
-        videoContainerRef.current.style.display = 'block';
-      } else {
-        videoContainerRef.current.style.display = 'none';
-      }
-    }
-  }, [isVideoFile, audioURL]);
-
-  // 정렬된 가사 목록 메모이제이션
-  const sortedLyrics = useMemo(() => {
-    return [...lyrics].sort((a, b) => a.start - b.start);
-  }, [lyrics]);
 
   const [showAnimation, setShowAnimation] = useState<boolean>(true);
 
@@ -842,15 +929,28 @@ export default function LiveLyricsPage() {
       </Menubar>
       <div className="h-14" /> {/* 메뉴바 공간 확보 */}
       <div className={styles.mainContent}>
-        <div className={styles.leftPanel} style={{ width: leftPanelWidth, flexShrink: 0 }}>
+        <div className={cn(styles.leftPanel, isLeftPanelCollapsed && styles.collapsed)} 
+             style={{ width: leftPanelWidth, flexShrink: 0 }}>
           <div className={styles.header}>
-            <h1>{t.editor.title}</h1>
+            <h1 className={isLeftPanelCollapsed ? "sr-only" : undefined}>{t.editor.title}</h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleLeftPanel}
+              className="ml-auto"
+              aria-label={isLeftPanelCollapsed ? "패널 펼치기" : "패널 접기"}
+            >
+              {isLeftPanelCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
           </div>
+          
+          {/* 비디오 컨테이너 - 항상 존재하지만 패널 접힘 상태에 따라 hidden */}
           <div 
             ref={videoContainerRef} 
             className={cn(
               "rounded-lg overflow-hidden bg-card border flex-shrink-0",
-              styles.videoContainer
+              styles.videoContainer,
+              isLeftPanelCollapsed && "hidden"
             )}
             style={{ 
               display: isVideoFile && audioURL ? 'block' : 'none',
@@ -860,297 +960,311 @@ export default function LiveLyricsPage() {
             }}
           >
             {videoElement}
-          </div>
-          <Card className="flex flex-col min-h-0 overflow-hidden">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>{t.editor.title}</CardTitle>
-                  <CardDescription>{t.editor.description}</CardDescription>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="h-8 w-8"
-                >
-                  {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
-              {/* 설정 영역 */}
-              <div className={cn("space-y-4 transition-all duration-200", 
-                showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
-              )}>
-                {/* SRT 업로드 */}
-                <div className="space-y-2 flex-shrink-0">
-                  <Label>{t.editor.upload.srt}</Label>
-                  <Input
-                    id="srt-upload"
-                    type="file"
-                    accept=".srt"
-                    onChange={handleSrtUpload}
-                    className="cursor-pointer"
-                  />
-                </div>
+        </div>
 
-                {/* 오디오 업로드 */}
-                <div className="space-y-2 flex-shrink-0">
-                  <Label>{t.editor.upload.audio}</Label>
-                  <Input
-                    type="file"
-                    accept="audio/*,video/mp4"
-                    onChange={handleAudioUpload}
-                    className="cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              {/* 가사 관리 */}
-              <div className="flex flex-col space-y-2 flex-1 min-h-0">
-                <div className="flex items-center justify-between flex-shrink-0">
-                  <Label>{t.editor.lyrics.title}</Label>
-                  <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
-                    {t.editor.lyrics.add}
-                  </Button>
-                </div>
-                <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>{t.editor.dialog.title}</DialogTitle>
-                      <DialogDescription>
-                        {t.editor.dialog.description}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      {isPlaying && !isVideoFile && (
-                        <div className="space-y-4">
-                          <Alert variant="destructive">
-                            <AlertCircle className="h-4 w-4" />
-                            <AlertDescription>
-                              {t.editor.playback.time_edit_disabled}
-                            </AlertDescription>
-                          </Alert>
-                          <Button 
-                            variant="secondary" 
-                            onClick={handleStop}
-                            className="w-full"
-                          >
-                            <Pause className="mr-2 h-4 w-4" />
-                            {t.editor.playback.stop}
-                          </Button>
-                        </div>
-                      )}
-                      <Tabs 
-                        defaultValue="current" 
-                        className="w-full"
-                        onValueChange={(value) => {
-                          setSelectedTimeTab(value as "current" | "last");
-                          updateNewLyricTimes(value as "current" | "last");
-                        }}
-                      >
-                        <TabsList className="grid w-full grid-cols-2">
-                          <TabsTrigger value="current">
-                            {t.editor.dialog.current_time}
-                          </TabsTrigger>
-                          <TabsTrigger value="last">
-                            {t.editor.dialog.last_lyric_time}
-                          </TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="current" className="space-y-4">
-                          <TimeInput
-                            value={newLyricStartTime}
-                            onChange={(value) => setNewLyricStartTime(value)}
-                            label={t.editor.dialog.start_time}
-                            disabled={isPlaying}
-                          />
-                          <TimeInput
-                            value={newLyricEndTime}
-                            onChange={(value) => setNewLyricEndTime(value)}
-                            label={t.editor.dialog.end_time}
-                            disabled={isPlaying}
-                          />
-                        </TabsContent>
-                        <TabsContent value="last" className="space-y-4">
-                          <TimeInput
-                            value={newLyricStartTime}
-                            onChange={(value) => setNewLyricStartTime(value)}
-                            label={t.editor.dialog.start_time}
-                            disabled={isPlaying}
-                          />
-                          <TimeInput
-                            value={newLyricEndTime}
-                            onChange={(value) => setNewLyricEndTime(value)}
-                            label={t.editor.dialog.end_time}
-                            disabled={isPlaying}
-                          />
-                        </TabsContent>
-                      </Tabs>
-                      <div className="space-y-2">
-                        <Label>{t.editor.dialog.lyrics}</Label>
-                        <Input
-                          value={newLyricText}
-                          onChange={(e) => setNewLyricText(e.target.value)}
-                          placeholder={t.editor.dialog.lyrics_placeholder}
-                        />
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsAddLyricDialogOpen(false)}>
-                        {t.editor.dialog.cancel}
-                      </Button>
-                      <Button onClick={handleAddLyric}>{t.editor.dialog.add}</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                <div 
-                  ref={tableRef}
-                  className={cn("border rounded-lg overflow-auto flex-1 table-container")}
-                  onScroll={handleTableScroll}
-                >
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[180px] text-left sticky top-0 bg-background">{t.editor.lyrics.time}</TableHead>
-                        <TableHead className="sticky top-0 bg-background">{t.editor.lyrics.text}</TableHead>
-                        <TableHead className="w-[100px] text-right sticky top-0 bg-background"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedLyrics.map((line, index) => (
-                        <TableRow 
-                          key={index}
-                          className={cn(
-                            "group transition-colors hover:bg-accent/50",
-                            index === activeLyricIndex && "bg-accent/30"
-                          )}
-                        >
-                          <TableCell 
-                            className="font-mono text-sm cursor-pointer"
-                            onClick={() => handleLyricClick(line.start)}
-                          >
-                            {formatTime(line.start)}
-                            <span className="text-muted-foreground"> ~ </span>
-                            {line.end ? formatTime(line.end) : t.editor.lyrics.until_end}
-                          </TableCell>
-                          <TableCell 
-                            className={cn(
-                              "cursor-pointer max-w-[400px] truncate",
-                              index === activeLyricIndex && "font-medium"
-                            )}
-                            onClick={() => handleLyricClick(line.start)}
-                          >
-                            {line.text}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setEditingLyric({ index, line });
-                                  setIsEditLyricDialogOpen(true);
-                                }}
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              >
-                                <span className="sr-only">Edit</span>
-                                ✎
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteLyric(index)}
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              >
-                                <span className="sr-only">Delete</span>
-                                ×
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {lyrics.length === 0 && (
-                        <TableRow>
-                          <TableCell 
-                            colSpan={3} 
-                            className="h-32 text-center text-muted-foreground"
-                          >
-                            {t.editor.lyrics.empty}
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                {isUserScrolling && (
+          {!isLeftPanelCollapsed && (
+            <Card className="flex flex-col min-h-0 overflow-hidden">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{t.editor.title}</CardTitle>
+                    <CardDescription>{t.editor.description}</CardDescription>
+                  </div>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAutoScroll(true);
-                      setIsUserScrolling(false);
-                    }}
-                    className="w-full mt-2"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSettings(!showSettings)}
+                    className="h-8 w-8"
                   >
-                    자동 스크롤 다시 시작
+                    {showSettings ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col flex-1 space-y-4 overflow-hidden">
+                {/* 설정 영역 */}
+                <div className={cn("space-y-4 transition-all duration-200", 
+                  showSettings ? "opacity-100 max-h-[500px]" : "opacity-0 max-h-0 overflow-hidden"
+                )}>
+        {/* SRT 업로드 */}
+                  <div className="space-y-2 flex-shrink-0">
+                    <Label>{t.editor.upload.srt}</Label>
+                    <Input
+                      id="srt-upload"
+                      type="file"
+                      accept=".srt"
+                      onChange={handleSrtUpload}
+                      className="cursor-pointer"
+                    />
         </div>
 
-        {/* Divider for resizing */}
-        <div className={styles.divider} onMouseDown={handleMouseDown}></div>
+                  {/* 오디오 업로드 */}
+                  <div className="space-y-2 flex-shrink-0">
+                    <Label>{t.editor.upload.audio}</Label>
+                    <Input
+                      type="file"
+                      accept="audio/*,video/mp4"
+                      onChange={handleAudioUpload}
+                      className="cursor-pointer"
+                    />
+                  </div>
+        </div>
 
-        {/* 오른쪽: 가사 미리보기 영역 */}
-        <div className={styles.rightPanel}>
-          <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
-            <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
-            <Select
-              value={previewMode}
-              onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle")}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder={t.preview.mode.label} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
-                <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
-              </SelectContent>
-            </Select>
+                {/* 가사 관리 */}
+                <div className="flex flex-col space-y-2 flex-1 min-h-0">
+                  <div className="flex items-center justify-between flex-shrink-0">
+                    <Label>{t.editor.lyrics.title}</Label>
+                    <Button variant="outline" size="sm" onClick={handleAddLyricDialogOpen}>
+                      {t.editor.lyrics.add}
+                    </Button>
+        </div>
+                  <Dialog open={isAddLyricDialogOpen} onOpenChange={setIsAddLyricDialogOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{t.editor.dialog.title}</DialogTitle>
+                        <DialogDescription>
+                          {t.editor.dialog.description}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        {isPlaying && !isVideoFile && (
+                          <div className="space-y-4">
+                            <Alert variant="destructive">
+                              <AlertCircle className="h-4 w-4" />
+                              <AlertDescription>
+                                {t.editor.playback.time_edit_disabled}
+                              </AlertDescription>
+                            </Alert>
+                            <Button 
+                              variant="secondary" 
+                              onClick={handleStop}
+                              className="w-full"
+                            >
+                              <Pause className="mr-2 h-4 w-4" />
+                              {t.editor.playback.stop}
+            </Button>
           </div>
-
-          <h2>{t.preview.title}</h2>
-          {previewMode === "apple" ? (
-            <div ref={previewRef} className={styles.lyricsPreview}>
-              <div className={styles[alignment]}>
-                {sortedLyrics.map((line, index) => {
-                  const isActive = index === activeLyricIndex;
-                  return (
-                    <div
-                      key={index}
-                      className={cn(
-                        styles.lyricLine,
-                        isActive ? styles.active : styles.inactive,
-                        !showAnimation && styles.noAnimation
-                      )}
-                      onClick={() => handleLyricClick(line.start)}
-                    >
-                      {line.text}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className={styles.subtitlePreview}>
-              {activeLyricIndex !== -1 ? lyrics[activeLyricIndex].text : ""}
-            </div>
-          )}
+        )}
+                        <Tabs 
+                          defaultValue="current" 
+                          className="w-full"
+                          onValueChange={(value) => {
+                            setSelectedTimeTab(value as "current" | "last");
+                            updateNewLyricTimes(value as "current" | "last");
+                          }}
+                        >
+                          <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="current">
+                              {t.editor.dialog.current_time}
+                            </TabsTrigger>
+                            <TabsTrigger value="last">
+                              {t.editor.dialog.last_lyric_time}
+                            </TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="current" className="space-y-4">
+                            <TimeInput
+                              value={newLyricStartTime}
+                              onChange={(value) => setNewLyricStartTime(value)}
+                              label={t.editor.dialog.start_time}
+                              disabled={isPlaying}
+                            />
+                            <TimeInput
+                              value={newLyricEndTime}
+                              onChange={(value) => setNewLyricEndTime(value)}
+                              label={t.editor.dialog.end_time}
+                              disabled={isPlaying}
+                            />
+                          </TabsContent>
+                          <TabsContent value="last" className="space-y-4">
+                            <TimeInput
+                              value={newLyricStartTime}
+                              onChange={(value) => setNewLyricStartTime(value)}
+                              label={t.editor.dialog.start_time}
+                              disabled={isPlaying}
+                            />
+                            <TimeInput
+                              value={newLyricEndTime}
+                              onChange={(value) => setNewLyricEndTime(value)}
+                              label={t.editor.dialog.end_time}
+                              disabled={isPlaying}
+                            />
+                          </TabsContent>
+                        </Tabs>
+                        <div className="space-y-2">
+                          <Label>{t.editor.dialog.lyrics}</Label>
+                          <Input
+                            value={newLyricText}
+                            onChange={(e) => setNewLyricText(e.target.value)}
+                            placeholder={t.editor.dialog.lyrics_placeholder}
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddLyricDialogOpen(false)}>
+                          {t.editor.dialog.cancel}
+                        </Button>
+                        <Button onClick={handleAddLyric}>{t.editor.dialog.add}</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                  <div 
+                    ref={tableRef}
+                    className={cn("border rounded-lg overflow-auto flex-1 table-container")}
+                    onScroll={handleTableScroll}
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[180px] text-left sticky top-0 bg-background">{t.editor.lyrics.time}</TableHead>
+                          <TableHead className="sticky top-0 bg-background">{t.editor.lyrics.text}</TableHead>
+                          <TableHead className="w-[100px] text-right sticky top-0 bg-background"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {sortedLyrics.map((line, index) => (
+                          <TableRow 
+                            key={index}
+                            className={cn(
+                              "group transition-colors hover:bg-accent/50",
+                              index === activeLyricIndex && "bg-accent/30"
+                            )}
+                          >
+                            <TableCell 
+                              className="font-mono text-sm cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation(); // 이벤트 버블링 방지
+                                handleLyricClick(line.start);
+                              }}
+                            >
+                              {formatTime(line.start)}
+                              <span className="text-muted-foreground"> ~ </span>
+                              {line.end ? formatTime(line.end) : t.editor.lyrics.until_end}
+                            </TableCell>
+                            <TableCell 
+                              className={cn(
+                                "cursor-pointer max-w-[400px] truncate",
+                                index === activeLyricIndex && "font-medium"
+                              )}
+                              onClick={(e) => {
+                                e.stopPropagation(); // 이벤트 버블링 방지
+                                handleLyricClick(line.start);
+                              }}
+                            >
+                              {line.text}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setEditingLyric({ index, line });
+                                    setIsEditLyricDialogOpen(true);
+                                  }}
+                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                >
+                                  <span className="sr-only">Edit</span>
+                                  ✎
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteLyric(index)}
+                                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                >
+                                  <span className="sr-only">Delete</span>
+                                  ×
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {lyrics.length === 0 && (
+                          <TableRow>
+                            <TableCell 
+                              colSpan={3} 
+                              className="h-32 text-center text-muted-foreground"
+                            >
+                              {t.editor.lyrics.empty}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
         </div>
+                  {isUserScrolling && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setAutoScroll(true);
+                        setIsUserScrolling(false);
+                      }}
+                      className="w-full mt-2"
+                    >
+                      자동 스크롤 다시 시작
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
       </div>
+
+      {/* Divider for resizing */}
+        <div className={cn(styles.divider, isLeftPanelCollapsed && styles.hiddenDivider)} onMouseDown={handleMouseDown}></div>
+
+      {/* 오른쪽: 가사 미리보기 영역 */}
+      <div className={styles.rightPanel}>
+        <div className={styles.previewOptions} style={{ marginBottom: "10px" }}>
+          <Label style={{ marginRight: "10px" }}>{t.preview.mode.label}:</Label>
+          <Select
+            value={previewMode}
+            onValueChange={(val) => setPreviewMode(val as "apple" | "subtitle" | "fun")}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder={t.preview.mode.label} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="apple">{t.preview.mode.apple}</SelectItem>
+              <SelectItem value="subtitle">{t.preview.mode.subtitle}</SelectItem>
+              <SelectItem value="fun">{t.preview.mode.fun}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <h2>{t.preview.title}</h2>
+        {previewMode === "apple" ? (
+          <LyricsPreview
+            lyrics={sortedLyrics}
+            virtualizedLyrics={virtualizedLyrics}
+            virtualizedStartIndex={virtualizedStartIndex}
+            currentTime={currentTime}
+            activeLyricIndex={activeLyricIndex}
+            alignment={alignment}
+            showAnimation={showAnimation}
+            handleLyricClick={handleLyricClick}
+            getLyricState={getLyricState}
+          />
+        ) : previewMode === "subtitle" ? (
+          <SubtitlePreview 
+            lyrics={sortedLyrics}
+            activeLyricIndex={activeLyricIndex}
+          />
+        ) : (
+          <FunLyricsPreview
+            lyrics={sortedLyrics}
+            virtualizedLyrics={virtualizedLyrics}
+            virtualizedStartIndex={virtualizedStartIndex}
+            currentTime={currentTime}
+            activeLyricIndex={activeLyricIndex}
+            alignment={alignment}
+            showAnimation={showAnimation}
+            handleLyricClick={handleLyricClick}
+            getLyricState={getLyricState}
+          />
+        )}
+      </div>
+    </div>
 
       {/* 오디오 플레이어 (항상 표시) */}
       {audioURL && (
@@ -1161,7 +1275,7 @@ export default function LiveLyricsPage() {
             onDurationChange={setDuration}
             currentTime={currentTime}
             onSeek={handleTimeUpdate}
-            audioRef={audioRef as React.RefObject<HTMLAudioElement>}
+            audioRef={audioRef}
             onPlayingChange={setIsPlaying}
             isVideoFile={isVideoFile}
           />

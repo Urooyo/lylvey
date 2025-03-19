@@ -60,21 +60,22 @@ export const en = {
     mode: {
       label: "Preview Mode",
       apple: "Apple Music Style",
-      subtitle: "Subtitle"
+      subtitle: "Subtitle",
+      fun: "Playful Mode"
     }
   },
   settings: {
     title: "Settings",
-    language: {
-      label: "Language",
-      ko: "한국어",
-      en: "English"
-    },
-    theme: {
-      label: "Theme",
-      light: "Light Theme",
-      dark: "Dark Theme",
-      system: "System"
-    }
+    language: "Language",
+    theme: "Theme",
+    light: "Light Theme",
+    dark: "Dark Theme",
+    system: "System",
+    alignment: "Lyrics Alignment",
+    left: "Left Align",
+    center: "Center Align",
+    right: "Right Align",
+    animation: "Animation",
+    animation_description: "Apply smooth animation effects when transitioning lyrics."
   }
 } as const; 
