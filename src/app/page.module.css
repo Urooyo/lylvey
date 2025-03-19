@@ -192,7 +192,7 @@
   text-align: right;
 }
 
-/* 가사 미리보기 영역 */
+/* 가사 미리보기 영역 - 성능 최적화 */
 .lyricsPreview {
   height: calc(100% - 40px);
   overflow-y: auto;
@@ -202,12 +202,16 @@
   width: 100%;
   max-width: 800px;
   margin: 0 auto;
-  scroll-behavior: smooth;
-  transition: scroll-top 1.2s cubic-bezier(0.19, 1, 0.22, 1);
-  will-change: scroll-position;
+  will-change: transform;
   background: transparent;
   z-index: 1;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch; /* iOS 스크롤 성능 향상 */
+  perspective: 1000px; /* 3D 렌더링 컨텍스트 생성 */
+  transform: translateZ(0); /* GPU 가속 강제 적용 */
+  backface-visibility: hidden; /* 성능 향상 */
 
+  /* 스크롤 마스크 - GPU 가속 최적화 */
   mask-image: linear-gradient(
     to bottom,
     transparent,
@@ -234,23 +238,26 @@
   background: transparent;
 }
 
-/* 가사 라인 스타일 */
+/* 가사 라인 스타일 - 성능 최적화 */
 .lyricLine {
   font-size: 2rem;
   line-height: 1.4;
   padding: 8px 0;
   margin: 4px 0;
-  transform: scale(1);
-  transition: all 1.2s cubic-bezier(0.19, 1, 0.22, 1);
+  transition-property: font-size, opacity, color, filter, font-weight; /* 개별 속성 지정으로 최적화 */
+  transition-duration: 0.8s;
+  transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
   opacity: 0.5;
   color: hsl(var(--foreground) / 0.7);
-  will-change: transform, opacity, filter;
+  will-change: font-size, opacity;
   letter-spacing: -0.02em;
   font-weight: 500;
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  transform: translateZ(0); /* GPU 가속 */
+  contain: content; /* 레이아웃 계산 최적화 */
 }
 
 .lyricLine:hover {
@@ -263,12 +270,12 @@
 }
 
 .noAnimation.inactive {
-  transform: none !important;
+  font-size: 1.7rem !important;
   opacity: 0.5;
 }
 
 .noAnimation.active {
-  transform: none !important;
+  font-size: 2rem !important;
   opacity: 1;
   font-weight: 600;
 }
@@ -278,31 +285,36 @@
   filter: blur(0px);
   opacity: 0.5;
   color: hsl(var(--foreground) / 0.7);
-  transform: scale(0.85);
+  font-size: 1.7rem;
+}
+
+/* 과거 가사 (종료시간 지난 가사) */
+.past {
+  opacity: 0.3 !important;
+  filter: blur(1px) !important;
+  color: hsl(var(--foreground) / 0.5) !important;
+  font-size: 1.5rem !important;
+  text-decoration: line-through !important;
+  text-decoration-color: hsl(var(--foreground) / 0.3) !important;
+  text-decoration-thickness: 1px !important;
+  font-weight: normal !important;
+}
+
+/* 미래 가사 (시작시간 이전) */
+.future {
+  opacity: 0.5;
+  color: hsl(var(--foreground) / 0.6);
+  font-size: 1.7rem;
 }
 
 /* 활성 가사 */
 .active {
   font-weight: 600;
-  transform: scale(1);
-  transform-origin: left center;
+  font-size: 2rem;
   opacity: 1;
   filter: none;
   color: hsl(var(--foreground));
   text-shadow: 0 0 30px hsl(var(--foreground) / 0.3);
-}
-
-/* 정렬에 따른 활성 가사 transform-origin 조정 */
-.textAlignLeft .active {
-  transform-origin: left center;
-}
-
-.textAlignCenter .active {
-  transform-origin: center center;
-}
-
-.textAlignRight .active {
-  transform-origin: right center;
 }
 
 /* 자막 미리보기 전용 */
